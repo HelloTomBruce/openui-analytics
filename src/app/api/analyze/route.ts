@@ -40,11 +40,15 @@ export async function POST(req: Request) {
     // 动态获取外部 GitLab MCP 工具（如果服务端启动了 5002 端口）
     const gitlabTools = await getGitLabAiTools(clientGitLabUrl, clientGitLabToken);
 
+    // 针对 o1 / o3-mini / reasoning 等只允许 temperature=1 或不传 temperature 的推理模型做自适应兼容
+    const isReasoningModel = /^(o1|o3|deepseek-reasoner|deepseek-r1)/i.test(model);
+    const temperature = isReasoningModel ? undefined : 0.2;
+
     const result = streamText({
       model: openai(model),
       system: getOpenUISystemPrompt(),
       messages,
-      temperature: 0.1,
+      ...(temperature !== undefined ? { temperature } : {}),
       tools: {
         execute_sql: tool({
           description: "在 PostgreSQL 数据库中安全执行只读 SELECT 查询以获取指标数据",
