@@ -3,19 +3,34 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev -p 3006",
     "build": "next build",
-    "start": "next start",
+    "start": "next start -p 3006",
     "lint": "eslint"
   },
   "dependencies": {
+    "@ai-sdk/openai": "1.1.15",
+    "@ai-sdk/react": "1.1.20",
+    "@modelcontextprotocol/sdk": "^1.32.1",
+    "@openuidev/lang-core": "^0.3.1",
+    "@openuidev/react-lang": "^0.3.1",
+    "ai": "4.1.54",
+    "clsx": "^2.1.1",
+    "dotenv": "^18.0.6",
+    "lucide-react": "^1.52.0",
     "next": "16.4.0",
+    "openui": "^1.0.4",
+    "pg": "^8.23.1",
     "react": "19.3.0",
-    "react-dom": "19.3.0"
+    "react-dom": "19.3.0",
+    "recharts": "^3.10.1",
+    "tailwind-merge": "^3.7.0",
+    "zod": "4.6.5"
   },
   "devDependencies": {
     "@tailwindcss/turbopack": "^4",
     "@types/node": "^20",
+    "@types/pg": "^8.23.1",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
