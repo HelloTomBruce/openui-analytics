@@ -1,7 +1,7 @@
 import { streamText, tool, jsonSchema } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
 import { getOpenUISystemPrompt } from "@/lib/prompt";
-import { callMcpTool } from "@/mcp/mcpClient";
+import { callMcpTool, getGitLabAiTools } from "@/mcp/mcpClient";
 
 export async function POST(req: Request) {
   try {
@@ -10,6 +10,8 @@ export async function POST(req: Request) {
       apiKey: clientKey,
       baseURL: clientBaseURL,
       model: clientModel,
+      gitlabToken: clientGitLabToken,
+      gitlabUrl: clientGitLabUrl,
     } = await req.json();
 
     const apiKey = clientKey || process.env.OPENAI_API_KEY || process.env.LLM_API_KEY;
@@ -18,7 +20,7 @@ export async function POST(req: Request) {
 
     // 当未配置 Key 时，返回合规的 Data Stream 协议响应
     if (!apiKey) {
-      const msg = `⚠️ 请先在右上角「LLM 设置」中配置您的 API Key。\n\n\`\`\`openui\nInsightBox(type="warning", title="未检测到 LLM API Key", content="请点击右上角「LLM 设置」输入 API Key，开启由 Vercel AI SDK + PostgreSQL MCP 驱动的流式数据分析看板。")\n\`\`\``;
+      const msg = `⚠️ 请先在右上角「LLM 设置」中配置您的 API Key。\n\n\`\`\`openui\nInsightBox(type="warning", title="未检测到 LLM API Key", content="请点击右上角「LLM 设置」输入 API Key，开启由 Vercel AI SDK + PostgreSQL & GitLab MCP 驱动的流式数据分析看板。")\n\`\`\``;
       const dataStreamChunk = `0:${JSON.stringify(msg)}\nd:{"finishReason":"stop","usage":{"promptTokens":0,"completionTokens":0}}\n`;
 
       return new Response(dataStreamChunk, {
@@ -34,6 +36,9 @@ export async function POST(req: Request) {
       apiKey,
       baseURL: baseURL.replace(/\/+$/, ""),
     });
+
+    // 动态获取外部 GitLab MCP 工具（如果服务端启动了 5002 端口）
+    const gitlabTools = await getGitLabAiTools(clientGitLabUrl, clientGitLabToken);
 
     const result = streamText({
       model: openai(model),
@@ -91,8 +96,9 @@ export async function POST(req: Request) {
             return await callMcpTool("describe_table", { table_name });
           },
         }),
+        ...gitlabTools,
       },
-      maxSteps: 5,
+      maxSteps: 6,
     });
 
     return result.toDataStreamResponse({

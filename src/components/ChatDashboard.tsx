@@ -32,6 +32,8 @@ const PRESET_QUERIES = [
   "对比张伟与陈静的业绩达成与胜率差异，并给出建议",
   "哪个月份各渠道的获客量增长最快？分析其主要驱动力",
   "如果下季度要砍掉一个 ROI 最低的渠道，应该选谁？",
+  "从 GitLab 分析最近的 Merge Request 审查效率与 Issue 分布",
+  "从 GitLab 统计各团队成员的 Commit 提交频率与活跃度",
 ];
 
 export default function ChatDashboard() {
@@ -57,11 +59,25 @@ export default function ChatDashboard() {
     }
     return "gpt-4o-mini";
   });
+  const [gitlabToken, setGitlabToken] = useState(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("openui_gitlab_token") || "";
+    }
+    return "";
+  });
+  const [gitlabUrl, setGitlabUrl] = useState(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("openui_gitlab_url") || "http://127.0.0.1:5002/mcp";
+    }
+    return "http://127.0.0.1:5002/mcp";
+  });
 
   const saveSettings = () => {
     localStorage.setItem("openui_llm_api_key", apiKey);
     localStorage.setItem("openui_llm_base_url", baseURL);
     localStorage.setItem("openui_llm_model", model);
+    localStorage.setItem("openui_gitlab_token", gitlabToken);
+    localStorage.setItem("openui_gitlab_url", gitlabUrl);
     setShowSettings(false);
   };
 
@@ -82,6 +98,8 @@ export default function ChatDashboard() {
       apiKey: apiKey.trim() || undefined,
       baseURL: baseURL.trim() || undefined,
       model: model.trim() || undefined,
+      gitlabToken: gitlabToken.trim() || undefined,
+      gitlabUrl: gitlabUrl.trim() || undefined,
     },
     onError: (err) => {
       console.error("Chat error:", err);
@@ -91,7 +109,7 @@ export default function ChatDashboard() {
         id: "welcome",
         role: "assistant",
         content:
-          "👋 你好！我是基于 **Vercel AI SDK**、**OpenUI 规范** 与 **PostgreSQL MCP Server** 构建的对话式数据分析助手。\n已开启流式多步 Agent 推理与实时视觉渲染，你可以直接提问，大模型将自动执行数据库分析。",
+          "👋 你好！我是基于 **Vercel AI SDK**、**OpenUI 规范** 与 **PostgreSQL + GitLab MCP** 构建的对话式数据分析助手。\n已开启流式多步 Agent 推理与实时视觉渲染，你可以直接提问，大模型将自动执行数据库与代码仓库分析。",
       },
     ],
   });
@@ -110,7 +128,7 @@ export default function ChatDashboard() {
           </div>
         </div>
 
-        {/* LLM & DB 运行状态卡片 */}
+        {/* LLM & DB & GitLab 运行状态卡片 */}
         <div className="mt-4 p-3 bg-slate-50 dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 dark:text-slate-300">
@@ -120,7 +138,7 @@ export default function ChatDashboard() {
             <button
               onClick={() => setShowSettings(true)}
               className="p-1 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-md text-slate-500 hover:text-slate-900 transition-colors"
-              title="配置 LLM"
+              title="配置 LLM & MCP"
             >
               <Settings className="w-3.5 h-3.5" />
             </button>
@@ -128,9 +146,15 @@ export default function ChatDashboard() {
           <div className="text-[11px] text-slate-400 truncate">
             {apiKey ? `模型: ${model}` : "点击右侧齿轮配置 API Key"}
           </div>
-          <div className="pt-2 border-t border-slate-200/60 dark:border-slate-800 flex items-center gap-1.5 text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-            <span>PostgreSQL MCP (Auto Agent)</span>
+          <div className="pt-2 border-t border-slate-200/60 dark:border-slate-800 space-y-1">
+            <div className="flex items-center gap-1.5 text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+              <span>PostgreSQL MCP (Active)</span>
+            </div>
+            <div className="flex items-center gap-1.5 text-[10px] text-indigo-600 dark:text-indigo-400 font-medium">
+              <span className="w-2 h-2 rounded-full bg-indigo-500"></span>
+              <span>GitLab MCP (:5002)</span>
+            </div>
           </div>
         </div>
 
@@ -405,6 +429,34 @@ export default function ChatDashboard() {
                   placeholder="gpt-4o-mini / deepseek-chat"
                   className="w-full p-2.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 font-mono"
                 />
+              </div>
+
+              <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
+                <div className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 mb-2">
+                  外部 GitLab MCP 配置
+                </div>
+                <div className="space-y-2">
+                  <div>
+                    <label className="block text-slate-500 mb-1 font-medium">GitLab MCP Endpoint</label>
+                    <input
+                      type="text"
+                      value={gitlabUrl}
+                      onChange={(e) => setGitlabUrl(e.target.value)}
+                      placeholder="http://127.0.0.1:5002/mcp"
+                      className="w-full p-2.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-slate-500 mb-1 font-medium">GitLab Private Token / Access Token</label>
+                    <input
+                      type="password"
+                      value={gitlabToken}
+                      onChange={(e) => setGitlabToken(e.target.value)}
+                      placeholder="glpat-..."
+                      className="w-full p-2.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 font-mono"
+                    />
+                  </div>
+                </div>
               </div>
             </div>
 
