@@ -2,6 +2,7 @@ import { streamText, tool, jsonSchema } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
 import { getOpenUISystemPrompt } from "@/lib/prompt";
 import { callMcpTool, getGitLabAiTools } from "@/mcp/mcpClient";
+import { getZentaoAiTools } from "@/mcp/zentaoMcpClient";
 
 export async function POST(req: Request) {
   try {
@@ -18,9 +19,11 @@ export async function POST(req: Request) {
     const baseURL = clientBaseURL || process.env.OPENAI_BASE_URL || process.env.LLM_BASE_URL || "https://api.openai.com/v1";
     const model = clientModel || process.env.OPENAI_MODEL || process.env.LLM_MODEL || "gpt-4o-mini";
 
+    console.log("[Analyze API Request]", { model, baseURL, hasApiKey: !!apiKey });
+
     // 当未配置 Key 时，返回合规的 Data Stream 协议响应
     if (!apiKey) {
-      const msg = `⚠️ 请先在右上角「LLM 设置」中配置您的 API Key。\n\n\`\`\`openui\nInsightBox(type="warning", title="未检测到 LLM API Key", content="请点击右上角「LLM 设置」输入 API Key，开启由 Vercel AI SDK + PostgreSQL & GitLab MCP 驱动的流式数据分析看板。")\n\`\`\``;
+      const msg = `⚠️ 请先在右上角「LLM 设置」中配置您的 API Key。\n\n\`\`\`openui\nInsightBox(type="warning", title="未检测到 LLM API Key", content="请点击右上角「LLM 设置」输入 API Key，开启由 Vercel AI SDK + PostgreSQL, GitLab & ZenTao MCP 驱动的流式数据分析看板。")\n\`\`\``;
       const dataStreamChunk = `0:${JSON.stringify(msg)}\nd:{"finishReason":"stop","usage":{"promptTokens":0,"completionTokens":0}}\n`;
 
       return new Response(dataStreamChunk, {
@@ -37,18 +40,17 @@ export async function POST(req: Request) {
       baseURL: baseURL.replace(/\/+$/, ""),
     });
 
-    // 动态获取外部 GitLab MCP 工具（如果服务端启动了 5002 端口）
-    const gitlabTools = await getGitLabAiTools(clientGitLabUrl, clientGitLabToken);
-
-    // 针对 o1 / o3-mini / reasoning 等只允许 temperature=1 或不传 temperature 的推理模型做自适应兼容
-    const isReasoningModel = /^(o1|o3|deepseek-reasoner|deepseek-r1)/i.test(model);
-    const temperature = isReasoningModel ? undefined : 0.2;
+    // 动态获取外部 GitLab MCP 与 本地 ZenTao MCP 工具
+    const [gitlabTools, zentaoTools] = await Promise.all([
+      getGitLabAiTools(clientGitLabUrl, clientGitLabToken),
+      getZentaoAiTools(),
+    ]);
 
     const result = streamText({
       model: openai(model),
       system: getOpenUISystemPrompt(),
       messages,
-      ...(temperature !== undefined ? { temperature } : {}),
+      temperature: 1,
       tools: {
         execute_sql: tool({
           description: "在 PostgreSQL 数据库中安全执行只读 SELECT 查询以获取指标数据",
@@ -101,8 +103,12 @@ export async function POST(req: Request) {
           },
         }),
         ...gitlabTools,
+        ...zentaoTools,
       },
-      maxSteps: 6,
+      maxSteps: 10,
+      onStepFinish({ stepType, toolCalls, text, finishReason }) {
+        console.log(`[Vercel AI SDK Step Finish] type=${stepType}, finishReason=${finishReason}, toolCalls=${toolCalls?.length || 0}, textLength=${text?.length || 0}`);
+      },
     });
 
     return result.toDataStreamResponse({

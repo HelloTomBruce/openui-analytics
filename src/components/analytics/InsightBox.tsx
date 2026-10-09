@@ -14,6 +14,13 @@ export const InsightBox: React.FC<InsightBoxProps> = ({
   children,
   content,
 }) => {
+  const defaultStyle = {
+    bg: "bg-blue-50 dark:bg-blue-950/20",
+    border: "border-blue-200 dark:border-blue-800",
+    text: "text-blue-900 dark:text-blue-200",
+    icon: <Info className="w-4 h-4 text-blue-600 dark:text-blue-400" />,
+  };
+
   const styles = {
     tip: {
       bg: "bg-amber-50 dark:bg-amber-950/20",
@@ -21,12 +28,7 @@ export const InsightBox: React.FC<InsightBoxProps> = ({
       text: "text-amber-900 dark:text-amber-200",
       icon: <Lightbulb className="w-4 h-4 text-amber-600 dark:text-amber-400" />,
     },
-    info: {
-      bg: "bg-blue-50 dark:bg-blue-950/20",
-      border: "border-blue-200 dark:border-blue-800",
-      text: "text-blue-900 dark:text-blue-200",
-      icon: <Info className="w-4 h-4 text-blue-600 dark:text-blue-400" />,
-    },
+    info: defaultStyle,
     warning: {
       bg: "bg-rose-50 dark:bg-rose-950/20",
       border: "border-rose-200 dark:border-rose-800",
@@ -39,7 +41,7 @@ export const InsightBox: React.FC<InsightBoxProps> = ({
       text: "text-emerald-900 dark:text-emerald-200",
       icon: <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />,
     },
-  }[type];
+  }[type] || defaultStyle;
 
   return (
     <div className={`rounded-xl border p-4 ${styles.bg} ${styles.border}`}>

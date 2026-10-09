@@ -36,6 +36,27 @@ export const AnalyticsFilterBar: React.FC<AnalyticsFilterBarProps> = ({
   const setFieldValue = useSetFieldValue();
   const triggerAction = useTriggerAction();
 
+  let safeChannelOptions: FilterOption[] = Array.isArray(channelOptions) ? channelOptions : [];
+  if (safeChannelOptions.length === 0) {
+    safeChannelOptions = [
+      { label: "全部渠道", value: "all" },
+      { label: "TikTok Ads", value: "TikTok Ads" },
+      { label: "Google Search", value: "Google Search" },
+      { label: "Meta Ads", value: "Meta Ads" },
+      { label: "LinkedIn Ads", value: "LinkedIn Ads" },
+    ];
+  }
+
+  let safeMetricOptions: FilterOption[] = Array.isArray(metricOptions) ? metricOptions : [];
+  if (safeMetricOptions.length === 0) {
+    safeMetricOptions = [
+      { label: "获客成本 (CAC)", value: "cac" },
+      { label: "获取线索量 (Leads)", value: "leads" },
+      { label: "转化率 (CVR)", value: "cvr" },
+      { label: "投资回报率 (ROI)", value: "roi" },
+    ];
+  }
+
   const [selectedChannel, setSelectedChannel] = React.useState(defaultChannel);
   const [selectedMetric, setSelectedMetric] = React.useState(defaultMetric);
   const [targetBudget, setTargetBudget] = React.useState("50000");
@@ -91,7 +112,7 @@ export const AnalyticsFilterBar: React.FC<AnalyticsFilterBarProps> = ({
             onChange={(e) => handleChannelChange(e.target.value)}
             className="w-full p-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
           >
-            {channelOptions.map((opt) => (
+            {safeChannelOptions.map((opt) => (
               <option key={opt.value} value={opt.value}>
                 {opt.label}
               </option>
@@ -109,7 +130,7 @@ export const AnalyticsFilterBar: React.FC<AnalyticsFilterBarProps> = ({
             onChange={(e) => handleMetricChange(e.target.value)}
             className="w-full p-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
           >
-            {metricOptions.map((opt) => (
+            {safeMetricOptions.map((opt) => (
               <option key={opt.value} value={opt.value}>
                 {opt.label}
               </option>

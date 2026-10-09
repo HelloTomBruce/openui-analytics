@@ -53,33 +53,43 @@ export const AnalyticsChart: React.FC<AnalyticsChartProps> = ({
   series = [],
   height = 280,
 }) => {
-  // 安全容错：确保 data 与 series 始终为可迭代数组
-  const safeData: Array<Record<string, unknown>> = Array.isArray(data)
-    ? data
-    : typeof data === "string"
-    ? (() => {
-        try {
-          return JSON.parse(data);
-        } catch {
-          return [];
-        }
-      })()
-    : [];
+  // 安全容错：确保 data 与 series 始终为有效数组且元素为非空对象
+  let rawData: unknown[] = [];
+  if (Array.isArray(data)) {
+    rawData = data;
+  } else if (typeof data === "string") {
+    try {
+      const parsed = JSON.parse(data);
+      if (Array.isArray(parsed)) rawData = parsed;
+    } catch {
+      rawData = [];
+    }
+  }
+
+  const safeData: Array<Record<string, unknown>> = rawData.filter(
+    (item): item is Record<string, unknown> => item != null && typeof item === "object" && !Array.isArray(item)
+  );
 
   let safeSeries: SeriesConfig[] = [];
   if (Array.isArray(series)) {
-    safeSeries = series;
+    safeSeries = series.filter(
+      (s): s is SeriesConfig => s != null && typeof s === "object" && typeof s.key === "string"
+    );
   } else if (typeof series === "string") {
     try {
       const parsed = JSON.parse(series);
-      safeSeries = Array.isArray(parsed) ? parsed : [];
+      if (Array.isArray(parsed)) {
+        safeSeries = parsed.filter(
+          (s): s is SeriesConfig => s != null && typeof s === "object" && typeof s.key === "string"
+        );
+      }
     } catch {
       safeSeries = [];
     }
   }
 
   // 如果没有传递 series，但 data 中有字段，自动提取数值字段作为默认序列
-  if (safeSeries.length === 0 && safeData.length > 0) {
+  if (safeSeries.length === 0 && safeData.length > 0 && safeData[0] && typeof safeData[0] === "object") {
     const firstRow = safeData[0];
     const candidateKeys = Object.keys(firstRow).filter(
       (k) => k !== xAxisKey && typeof firstRow[k] === "number"
@@ -115,13 +125,13 @@ export const AnalyticsChart: React.FC<AnalyticsChartProps> = ({
         </div>
       )}
 
-      <div style={{ width: "100%", height }}>
+      <div style={{ width: "100%", height, minHeight: height }}>
         {safeData.length === 0 ? (
           <div className="flex h-full items-center justify-center text-xs text-slate-400">
             暂无图表数据
           </div>
         ) : (
-          <ResponsiveContainer width="100%" height="100%">
+          <ResponsiveContainer width="100%" height={height} minWidth={0} debounce={50}>
             {type === "line" ? (
               <LineChart data={safeData}>
                 <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
@@ -137,7 +147,7 @@ export const AnalyticsChart: React.FC<AnalyticsChartProps> = ({
                 <Legend wrapperStyle={{ fontSize: "12px", paddingTop: "8px" }} />
                 {safeSeries.map((s, idx) => (
                   <Line
-                    key={s.key}
+                    key={`line-${s.key || idx}`}
                     type="monotone"
                     dataKey={s.key}
                     name={s.label || s.key}
@@ -163,7 +173,7 @@ export const AnalyticsChart: React.FC<AnalyticsChartProps> = ({
                 <Legend wrapperStyle={{ fontSize: "12px", paddingTop: "8px" }} />
                 {safeSeries.map((s, idx) => (
                   <Bar
-                    key={s.key}
+                    key={`bar-${s.key || idx}`}
                     dataKey={s.key}
                     name={s.label || s.key}
                     fill={s.color || DEFAULT_COLORS[idx % DEFAULT_COLORS.length]}
@@ -188,7 +198,7 @@ export const AnalyticsChart: React.FC<AnalyticsChartProps> = ({
                   const color = s.color || DEFAULT_COLORS[idx % DEFAULT_COLORS.length];
                   return (
                     <Area
-                      key={s.key}
+                      key={`area-${s.key || idx}`}
                       type="monotone"
                       dataKey={s.key}
                       name={s.label || s.key}
@@ -220,11 +230,10 @@ export const AnalyticsChart: React.FC<AnalyticsChartProps> = ({
                 >
                   {safeData.map((_: unknown, index: number) => (
                     <Cell
-                      key={`cell-${index}`}
+                      key={`pie-cell-${index}`}
                       fill={DEFAULT_COLORS[index % DEFAULT_COLORS.length]}
                     />
                   ))}
-
                 </Pie>
               </PieChart>
             )}

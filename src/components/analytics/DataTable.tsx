@@ -27,33 +27,43 @@ export const DataTable: React.FC<DataTableProps> = ({
   const [sortKey, setSortKey] = useState<string | null>(null);
   const [sortAsc, setSortAsc] = useState(true);
 
-  // 安全容错：确保 data 与 columns 始终为有效数组
-  const safeData: Array<Record<string, unknown>> = Array.isArray(data)
-    ? data
-    : typeof data === "string"
-    ? (() => {
-        try {
-          return JSON.parse(data);
-        } catch {
-          return [];
-        }
-      })()
-    : [];
+  // 安全容错：确保 data 与 columns 始终为有效数组且元素为非空对象
+  let rawData: unknown[] = [];
+  if (Array.isArray(data)) {
+    rawData = data;
+  } else if (typeof data === "string") {
+    try {
+      const parsed = JSON.parse(data);
+      if (Array.isArray(parsed)) rawData = parsed;
+    } catch {
+      rawData = [];
+    }
+  }
+
+  const safeData: Array<Record<string, unknown>> = rawData.filter(
+    (item): item is Record<string, unknown> => item != null && typeof item === "object" && !Array.isArray(item)
+  );
 
   let safeColumns: ColumnConfig[] = [];
   if (Array.isArray(columns)) {
-    safeColumns = columns;
+    safeColumns = columns.filter(
+      (c): c is ColumnConfig => c != null && typeof c === "object" && typeof c.key === "string"
+    );
   } else if (typeof columns === "string") {
     try {
       const parsed = JSON.parse(columns);
-      safeColumns = Array.isArray(parsed) ? parsed : [];
+      if (Array.isArray(parsed)) {
+        safeColumns = parsed.filter(
+          (c): c is ColumnConfig => c != null && typeof c === "object" && typeof c.key === "string"
+        );
+      }
     } catch {
       safeColumns = [];
     }
   }
 
   // 若未指定 columns，自动根据数据行推断表头
-  if (safeColumns.length === 0 && safeData.length > 0) {
+  if (safeColumns.length === 0 && safeData.length > 0 && safeData[0] && typeof safeData[0] === "object") {
     safeColumns = Object.keys(safeData[0]).map((k) => ({
       key: k,
       header: k,
@@ -61,9 +71,10 @@ export const DataTable: React.FC<DataTableProps> = ({
   }
 
   const filteredData = safeData.filter((row) => {
+    if (!row || typeof row !== "object") return false;
     if (!searchTerm) return true;
     return Object.values(row).some((val) =>
-      String(val).toLowerCase().includes(searchTerm.toLowerCase())
+      val != null && String(val).toLowerCase().includes(searchTerm.toLowerCase())
     );
   });
 

@@ -23,7 +23,7 @@ export const MetricCard: React.FC<MetricCardProps> = ({
       </div>
       <div className="mt-2 flex items-baseline justify-between gap-2">
         <div className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
-          {value}
+          {typeof value === "object" ? JSON.stringify(value) : (value ?? "-")}
         </div>
         {change && (
           <div

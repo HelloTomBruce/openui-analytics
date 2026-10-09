@@ -13,6 +13,7 @@
     "@ai-sdk/openai": "1.1.15",
     "@ai-sdk/react": "1.1.20",
     "@modelcontextprotocol/sdk": "^1.32.1",
+    "@openuidev/devtools": "^0.2.2",
     "@openuidev/lang-core": "^0.3.1",
     "@openuidev/react-lang": "^0.3.1",
     "ai": "4.1.54",
