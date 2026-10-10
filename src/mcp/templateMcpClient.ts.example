@@ -1,0 +1,84 @@
+/**
+ * 命令式 MCP 数据源接入模板（示例，不参与编译——复制后重命名再实现）。
+ *
+ * 使用方式：
+ * 1. 复制本文件为 src/mcp/jiraMcpClient.ts（以 Jira 为例）
+ * 2. 实现 getJiraAiTools()：连接 MCP server → listTools → 包装为 AI SDK 工具
+ * 3. 在 src/app/api/analyze/route.ts 中合并进 tools：...jiraTools
+ * 4. 在 src/lib/prompt.ts 的 Data Access 章节登记新工具族
+ *
+ * 参考实现：src/mcp/mcpClient.ts (getGitLabAiTools)、src/mcp/zentaoMcpClient.ts
+ */
+
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { tool, jsonSchema, type CoreTool } from "ai";
+
+let cachedClient: Client | null = null;
+
+async function getJiraMcpClient(
+  endpoint = process.env.JIRA_MCP_URL || "http://127.0.0.1:6000/mcp"
+): Promise<Client> {
+  if (cachedClient) return cachedClient;
+
+  const client = new Client(
+    { name: "openui-jira-client", version: "1.0.0" },
+    { capabilities: {} }
+  );
+
+  const transport = new StreamableHTTPClientTransport(new URL(endpoint));
+  await client.connect(transport);
+  cachedClient = client;
+  return client;
+}
+
+/**
+ * 动态发现并挂载 Jira MCP 工具至 Vercel AI SDK。
+ * 连接失败时返回空工具集（降级，不抛错）。
+ */
+export async function getJiraAiTools(
+  endpoint?: string
+): Promise<Record<string, CoreTool>> {
+  try {
+    const client = await getJiraMcpClient(endpoint);
+    const { tools } = await client.listTools();
+    const aiTools: Record<string, CoreTool> = {};
+
+    for (const mcpTool of tools) {
+      aiTools[`jira_${mcpTool.name}`] = tool({
+        description: `[Jira MCP] ${mcpTool.description || mcpTool.name}`,
+        parameters: jsonSchema<Record<string, unknown>>(
+          (mcpTool.inputSchema as Record<string, unknown>) || { type: "object" }
+        ),
+        execute: async (args) => {
+          const res = await client.callTool({
+            name: mcpTool.name,
+            arguments: args,
+          });
+          const contentList = Array.isArray(res.content)
+            ? (res.content as Array<{ type: string; text?: string }>)
+            : [];
+          if (res.isError) {
+            throw new Error(
+              contentList.map((c) => c.text || "").join("\n") ||
+                `Jira tool ${mcpTool.name} execution failed`
+            );
+          }
+          const text = contentList
+            .filter((c) => c.type === "text")
+            .map((c) => c.text || "")
+            .join("\n");
+          try {
+            return JSON.parse(text);
+          } catch {
+            return text;
+          }
+        },
+      });
+    }
+
+    return aiTools;
+  } catch {
+    return {};
+  }
+}

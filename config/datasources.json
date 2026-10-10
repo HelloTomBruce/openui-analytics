@@ -1,0 +1,4 @@
+{
+  "_comment": "声明式 HTTP MCP 数据源。每个条目：{ id, name, kind: \"http-mcp\", url, tools? }。id 会成为工具名前缀（<id>_*）。修改后重启服务生效。详见 docs/adding-a-datasource.md。",
+  "sources": []
+}

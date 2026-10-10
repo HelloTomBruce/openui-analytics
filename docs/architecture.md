@@ -48,6 +48,17 @@
 3. 关键字黑名单：`drop/delete/update/insert/alter/truncate/create/grant/revoke/exec/execute/call/copy`；
 4. 无 `LIMIT` 时自动追加 `LIMIT 200`。
 
+## 数据源注册表与扩展
+
+`src/mcp/registry.ts` 维护所有数据源的描述符：
+
+- **内置三源**：`postgres` / `gitlab-mcp` / `zentao-cli`，各自带健康探针（`SELECT 1` / listTools / CLI 探活，3s 超时）；
+- **声明式扩展源**：`config/datasources.json` 中的 `http-mcp` 条目，零代码并入列表，健康检查为 URL 可达性探测。
+
+`GET /api/datasources` 返回 `{ sources, health }`，设置页「数据源状态」分区据此渲染状态灯。
+
+新增数据源的完整指南（声明式 vs 命令式，含 Jira / MySQL 示例）见 [docs/adding-a-datasource.md](adding-a-datasource.md)。
+
 ## OpenUI 组件清单
 
 模型通过 system prompt（`src/lib/prompt.ts`）获得以下声明式组件，前端在 `src/components/analytics/` 实现：
