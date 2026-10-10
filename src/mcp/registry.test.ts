@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, vi } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -7,6 +7,11 @@ import {
   checkDataSourceHealth,
   reloadDataSources,
 } from "./registry";
+import { getGitLabMcpClient } from "./mcpClient";
+
+vi.mock("./mcpClient", () => ({
+  getGitLabMcpClient: vi.fn(),
+}));
 
 function writeTempConfig(content: string): string {
   const file = path.join(
@@ -34,10 +39,32 @@ describe("listDataSources", () => {
 });
 
 describe("checkDataSourceHealth", () => {
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
   it("未知 id 返回 ok: false 与 unknown datasource 错误", async () => {
     const result = await checkDataSourceHealth("does-not-exist");
     expect(result.ok).toBe(false);
     expect(result.error).toBe("unknown datasource");
+  });
+
+  it("gitlab-mcp 探活使用调用方传入的 url 与 token，而非服务端默认值", async () => {
+    vi.mocked(getGitLabMcpClient).mockRejectedValue(
+      new Error("connection refused")
+    );
+
+    const result = await checkDataSourceHealth("gitlab-mcp", {
+      gitlabUrl: "http://10.0.0.9:5002/mcp",
+      gitlabToken: "glpat-test",
+    });
+
+    expect(getGitLabMcpClient).toHaveBeenCalledWith(
+      "http://10.0.0.9:5002/mcp",
+      "glpat-test"
+    );
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("connection refused");
   });
 });
 

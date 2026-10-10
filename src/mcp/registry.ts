@@ -130,8 +130,8 @@ async function probePostgres(): Promise<void> {
   await pool.query("SELECT 1");
 }
 
-async function probeGitLabMcp(): Promise<void> {
-  const client = await getGitLabMcpClient();
+async function probeGitLabMcp(endpoint?: string, token?: string): Promise<void> {
+  const client = await getGitLabMcpClient(endpoint, token);
   await client.listTools();
 }
 
@@ -144,9 +144,15 @@ function probeZentaoCli(): Promise<void> {
   });
 }
 
-const PROBES: Record<string, () => Promise<void>> = {
+/** 探活可选配置：GitLab 源使用调用方（页面设置）的 endpoint/token，与 /api/analyze 实际使用的配置保持一致 */
+export interface ProbeOptions {
+  gitlabUrl?: string;
+  gitlabToken?: string;
+}
+
+const PROBES: Record<string, (opts?: ProbeOptions) => Promise<void>> = {
   postgres: probePostgres,
-  "gitlab-mcp": probeGitLabMcp,
+  "gitlab-mcp": (opts) => probeGitLabMcp(opts?.gitlabUrl, opts?.gitlabToken),
   "zentao-cli": probeZentaoCli,
 };
 
@@ -158,7 +164,10 @@ async function probeHttpMcp(url: string): Promise<void> {
   }
 }
 
-export async function checkDataSourceHealth(id: string): Promise<HealthResult> {
+export async function checkDataSourceHealth(
+  id: string,
+  opts?: ProbeOptions
+): Promise<HealthResult> {
   const probe = PROBES[id];
   const startedAt = Date.now();
   if (!probe) {
@@ -181,7 +190,7 @@ export async function checkDataSourceHealth(id: string): Promise<HealthResult> {
     }
   }
   try {
-    await withTimeout(probe(), HEALTH_TIMEOUT_MS);
+    await withTimeout(probe(opts), HEALTH_TIMEOUT_MS);
     return { ok: true, latencyMs: Date.now() - startedAt };
   } catch (err) {
     return {
