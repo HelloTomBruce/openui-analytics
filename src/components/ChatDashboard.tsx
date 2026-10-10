@@ -11,6 +11,7 @@ import { MessageList } from "@/components/chat/MessageList";
 import { ChatInput } from "@/components/chat/ChatInput";
 import { SettingsModal } from "@/components/chat/SettingsModal";
 import { DevToolsPanel } from "@/components/chat/DevToolsPanel";
+import { InsightBanner } from "@/components/chat/InsightBanner";
 
 /**
  * 组合层：唯一接线点。
@@ -172,6 +173,8 @@ export default function ChatDashboard() {
             </button>
           </div>
         </header>
+
+        <InsightBanner onAnalyze={handleRendererAction} />
 
         <MessageList
           messages={messages}
