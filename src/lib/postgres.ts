@@ -115,11 +115,10 @@ export async function initDatabase(): Promise<void> {
 }
 
 /**
- * 安全执行只读 SQL 查询
+ * 只读 SQL 安全校验：仅允许 SELECT / WITH，禁止多语句与 DDL/DML 危险关键字。
+ * 校验不通过时抛出包含「安全限制」的错误。
  */
-export async function executeReadOnlySql(sql: string): Promise<{ rows: Record<string, unknown>[]; rowCount: number }> {
-  await initDatabase();
-
+export function assertReadOnlySql(sql: string): void {
   const cleanSql = sql.trim().replace(/;+$/, "");
 
   // 严禁包含多语句分号（防止通过分号执行多条恶意指令）
@@ -147,6 +146,18 @@ export async function executeReadOnlySql(sql: string): Promise<{ rows: Record<st
       throw new Error(`安全限制：检测到禁止的 SQL 指令 [${kw.toUpperCase()}]`);
     }
   }
+}
+
+/**
+ * 安全执行只读 SQL 查询
+ */
+export async function executeReadOnlySql(sql: string): Promise<{ rows: Record<string, unknown>[]; rowCount: number }> {
+  await initDatabase();
+
+  assertReadOnlySql(sql);
+
+  const cleanSql = sql.trim().replace(/;+$/, "");
+  const lower = cleanSql.toLowerCase();
 
   // 限制最大返回行数
   let finalSql = cleanSql;

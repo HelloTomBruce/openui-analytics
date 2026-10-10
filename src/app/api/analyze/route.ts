@@ -40,11 +40,19 @@ export async function POST(req: Request) {
       baseURL: baseURL.replace(/\/+$/, ""),
     });
 
-    // 动态获取外部 GitLab MCP 与 本地 ZenTao MCP 工具
-    const [gitlabTools, zentaoTools] = await Promise.all([
+    // 动态获取外部 GitLab MCP 与 本地 ZenTao MCP 工具；单一数据源失败时降级为空工具集而非拖垮整个请求
+    const [gitlabResult, zentaoResult] = await Promise.allSettled([
       getGitLabAiTools(clientGitLabUrl, clientGitLabToken),
       getZentaoAiTools(),
     ]);
+    if (gitlabResult.status === "rejected") {
+      console.warn("[Analyze API] GitLab MCP 工具加载失败，降级为空工具集:", gitlabResult.reason);
+    }
+    if (zentaoResult.status === "rejected") {
+      console.warn("[Analyze API] ZenTao MCP 工具加载失败，降级为空工具集:", zentaoResult.reason);
+    }
+    const gitlabTools = gitlabResult.status === "fulfilled" ? gitlabResult.value : {};
+    const zentaoTools = zentaoResult.status === "fulfilled" ? zentaoResult.value : {};
 
     const result = streamText({
       model: openai(model),
