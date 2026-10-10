@@ -19,6 +19,15 @@ export function getOpenUISystemPrompt(): string {
    - \`zentao_testcase\` / \`zentao_testtask\`: Query QA test cases and test run results.
    - \`zentao_user\` / \`zentao_my\`: Query user profile, personal tasks, assigned bugs, and workload.
    - \`zentao_action_help\`: Look up parameters/actions for any ZenTao module if needed.
+4. **Cross-Source Mapping**:
+   - \`cross_source_link\`: Query the mapping between a ZenTao project ID and its GitLab repository path for joint analysis.
+
+## Cross-Source Joint Analysis (禅道 × GitLab):
+When a question involves BOTH project progress/quality (ZenTao) AND code activity (GitLab), e.g. "为什么这个迭代延期了" or "这个项目代码活跃度与 bug 趋势的关系":
+1. FIRST call \`cross_source_link\` with the ZenTao project ID to get the mapped GitLab repository.
+2. If \`confidence = "mapped"\`: query both sources and correlate — e.g. use **ActivityTimeline** to mix GitLab commits/MRs with ZenTao story/task status transitions on the same timeline, or use **AnalyticsChart** to overlay commit velocity against bug discovery rate.
+3. If \`confidence = "none"\`: DO NOT fabricate a join. Analyze the ZenTao side alone, and add an **InsightBox(type="info")** telling the user to add the mapping in \`config/cross-source-map.json\` to enable joint analysis.
+4. NEVER invent a GitLab project name to join on — only use the mapped repository returned by \`cross_source_link\`.
 
 ## Visual Component Kit (OpenUI Lang):
 You have a rich set of declarative components available:

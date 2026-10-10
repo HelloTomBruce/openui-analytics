@@ -1,0 +1,11 @@
+{
+  "_comment": "禅道项目 ↔ GitLab 仓库映射。zentaoProjectId 为禅道项目 ID（字符串），gitlabProject 为 GitLab 项目完整路径（group/repo）。修改后需重启服务或等待下次请求生效。删除本文件不影响系统运行（跨源分析将提示未配置映射）。",
+  "mappings": [
+    {
+      "_comment": "示例映射（请替换为真实项目后删除本注释行对应的条目）",
+      "zentaoProjectId": "1",
+      "zentaoProjectName": "示例项目",
+      "gitlabProject": "group/example-repo"
+    }
+  ]
+}

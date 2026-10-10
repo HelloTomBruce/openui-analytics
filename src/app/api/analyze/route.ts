@@ -3,6 +3,7 @@ import { createOpenAI } from "@ai-sdk/openai";
 import { getOpenUISystemPrompt } from "@/lib/prompt";
 import { callMcpTool, getGitLabAiTools } from "@/mcp/mcpClient";
 import { getZentaoAiTools } from "@/mcp/zentaoMcpClient";
+import { getCrossSourceLinks } from "@/lib/crossSourceMap";
 
 export async function POST(req: Request) {
   try {
@@ -108,6 +109,23 @@ export async function POST(req: Request) {
           execute: async ({ table_name }) => {
             console.log("[Vercel AI SDK -> MCP Tool] describe_table:", table_name);
             return await callMcpTool("describe_table", { table_name });
+          },
+        }),
+        cross_source_link: tool({
+          description: "查询禅道项目与 GitLab 仓库的关联映射，用于跨源联合分析（迭代进度 × 代码活跃度）。映射缺失时返回 confidence=none，此时应提示用户补充映射，不得编造关联结果。",
+          parameters: jsonSchema<{ zentao_project_id: string }>({
+            type: "object",
+            properties: {
+              zentao_project_id: {
+                type: "string",
+                description: "禅道项目 ID，例如: \"42\"",
+              },
+            },
+            required: ["zentao_project_id"],
+          }),
+          execute: async ({ zentao_project_id }) => {
+            console.log("[Vercel AI SDK -> CrossSource] cross_source_link:", zentao_project_id);
+            return getCrossSourceLinks(zentao_project_id);
           },
         }),
         ...gitlabTools,
