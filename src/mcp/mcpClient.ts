@@ -4,6 +4,7 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { tool, jsonSchema, type CoreTool } from "ai";
 import { createPostgresMcpServer } from "./postgresMcpServer";
+import { parseMcpToolResult } from "./parseToolResult";
 
 let cachedClient: Client | null = null;
 // GitLab 客户端按「endpoint+token」键控缓存：用户在设置页修改配置后
@@ -36,11 +37,6 @@ export async function getPostgresMcpClient(): Promise<Client> {
 
   cachedClient = client;
   return client;
-}
-
-interface McpContentItem {
-  type: string;
-  text?: string;
 }
 
 /**
@@ -78,24 +74,7 @@ export async function callMcpTool(name: string, args: Record<string, unknown>): 
     name,
     arguments: args,
   });
-
-  const contentList = Array.isArray(res.content) ? (res.content as McpContentItem[]) : [];
-
-  if (res.isError) {
-    const errorText = contentList.map((c) => c.text || "").join("\n");
-    throw new Error(errorText || "MCP tool execution failed");
-  }
-
-  const textOutput = contentList
-    .filter((c) => c.type === "text")
-    .map((c) => c.text || "")
-    .join("\n");
-
-  try {
-    return JSON.parse(textOutput);
-  } catch {
-    return textOutput;
-  }
+  return parseMcpToolResult(res, `MCP tool ${name}`);
 }
 
 /**
@@ -182,21 +161,7 @@ export async function getGitLabAiTools(
             name: mcpTool.name,
             arguments: args,
           });
-          const contentList = Array.isArray(res.content) ? (res.content as McpContentItem[]) : [];
-          if (res.isError) {
-            const errorText = contentList.map((c) => c.text || "").join("\n");
-            throw new Error(errorText || `GitLab tool ${mcpTool.name} execution failed`);
-          }
-          const textOutput = contentList
-            .filter((c) => c.type === "text")
-            .map((c) => c.text || "")
-            .join("\n");
-
-          try {
-            return JSON.parse(textOutput);
-          } catch {
-            return textOutput;
-          }
+          return parseMcpToolResult(res, `GitLab tool ${mcpTool.name}`);
         },
       });
     }

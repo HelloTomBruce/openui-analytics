@@ -1,59 +1,54 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { tool, jsonSchema, type CoreTool } from "ai";
+import { parseMcpToolResult } from "./parseToolResult";
 
 let cachedZentaoClient: Client | null = null;
-let isConnecting = false;
-
-interface McpContentItem {
-  type: string;
-  text?: string;
-}
+// 连接中的共享 Promise：并发调用复用同一次连接过程，替代「sleep 500ms 赌运气」的假锁
+let connectingPromise: Promise<Client> | null = null;
 
 /**
  * 获取或创建连接到本地 ZenTao CLI MCP Server 的 Client
  */
-export async function getZentaoMcpClient(): Promise<Client> {
-  if (cachedZentaoClient) return cachedZentaoClient;
-  if (isConnecting) {
-    // 简单等待锁
-    await new Promise((resolve) => setTimeout(resolve, 500));
-    if (cachedZentaoClient) return cachedZentaoClient;
-  }
+export function getZentaoMcpClient(): Promise<Client> {
+  if (cachedZentaoClient) return Promise.resolve(cachedZentaoClient);
 
-  isConnecting = true;
-  try {
-    const client = new Client(
-      {
-        name: "openui-zentao-client",
-        version: "1.0.0",
-      },
-      {
-        capabilities: {},
-      }
-    );
+  if (!connectingPromise) {
+    connectingPromise = (async () => {
+      const client = new Client(
+        {
+          name: "openui-zentao-client",
+          version: "1.0.0",
+        },
+        {
+          capabilities: {},
+        }
+      );
 
-    const transport = new StdioClientTransport({
-      command: "zentao",
-      args: ["mcp", "--read-only"],
+      const transport = new StdioClientTransport({
+        command: "zentao",
+        args: ["mcp", "--read-only"],
+      });
+
+      transport.onerror = (err) => {
+        console.warn("[ZenTao MCP Transport Error]:", err);
+        cachedZentaoClient = null;
+      };
+
+      transport.onclose = () => {
+        console.log("[ZenTao MCP Transport Closed]");
+        cachedZentaoClient = null;
+      };
+
+      await client.connect(transport);
+      cachedZentaoClient = client;
+      return client;
+    })().finally(() => {
+      connectingPromise = null;
     });
-
-    transport.onerror = (err) => {
-      console.warn("[ZenTao MCP Transport Error]:", err);
-      cachedZentaoClient = null;
-    };
-
-    transport.onclose = () => {
-      console.log("[ZenTao MCP Transport Closed]");
-      cachedZentaoClient = null;
-    };
-
-    await client.connect(transport);
-    cachedZentaoClient = client;
-    return client;
-  } finally {
-    isConnecting = false;
   }
+
+  return connectingPromise;
 }
 
 /**
@@ -77,23 +72,7 @@ export async function getZentaoAiTools(): Promise<Record<string, CoreTool>> {
             name: mcpTool.name,
             arguments: args,
           });
-
-          const contentList = Array.isArray(res.content) ? (res.content as McpContentItem[]) : [];
-          if (res.isError) {
-            const errorText = contentList.map((c) => c.text || "").join("\n");
-            throw new Error(errorText || `ZenTao tool ${mcpTool.name} execution failed`);
-          }
-
-          const textOutput = contentList
-            .filter((c) => c.type === "text")
-            .map((c) => c.text || "")
-            .join("\n");
-
-          try {
-            return JSON.parse(textOutput);
-          } catch {
-            return textOutput;
-          }
+          return parseMcpToolResult(res, `ZenTao tool ${mcpTool.name}`);
         },
       });
     }
