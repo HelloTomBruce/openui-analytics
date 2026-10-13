@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { ACCESS_TOKEN_STORAGE_KEY, authHeaders } from "@/lib/auth";
 
 const STORAGE_KEYS = {
   apiKey: "openui_llm_api_key",
@@ -37,6 +38,10 @@ export function useLlmSettings() {
   const [gitlabUrl, setGitlabUrl] = useState(() =>
     readStored(STORAGE_KEYS.gitlabUrl, DEFAULT_GITLAB_URL)
   );
+  // 部署模式访问令牌（对应服务端 OPENUI_API_AUTH_TOKEN；本地未配置时留空）
+  const [accessToken, setAccessToken] = useState(() =>
+    readStored(ACCESS_TOKEN_STORAGE_KEY, "")
+  );
 
   const saveSettings = () => {
     localStorage.setItem(STORAGE_KEYS.apiKey, apiKey);
@@ -44,6 +49,7 @@ export function useLlmSettings() {
     localStorage.setItem(STORAGE_KEYS.model, model);
     localStorage.setItem(STORAGE_KEYS.gitlabToken, gitlabToken);
     localStorage.setItem(STORAGE_KEYS.gitlabUrl, gitlabUrl);
+    localStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, accessToken);
     setShowSettings(false);
   };
 
@@ -71,6 +77,9 @@ export function useLlmSettings() {
     setGitlabToken,
     gitlabUrl,
     setGitlabUrl,
+    accessToken,
+    setAccessToken,
+    authHeaders,
     saveSettings,
     chatBody,
   };

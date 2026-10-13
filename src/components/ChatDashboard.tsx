@@ -37,6 +37,9 @@ export default function ChatDashboard() {
     setGitlabToken,
     gitlabUrl,
     setGitlabUrl,
+    accessToken,
+    setAccessToken,
+    authHeaders,
     saveSettings,
     chatBody,
   } = useLlmSettings();
@@ -87,6 +90,7 @@ export default function ChatDashboard() {
   } = useChat({
     api: "/api/analyze",
     body: chatBody,
+    headers: authHeaders(),
     onError: handleChatError,
     initialMessages,
     onFinish: (message) => {
@@ -236,11 +240,13 @@ export default function ChatDashboard() {
           model={model}
           gitlabToken={gitlabToken}
           gitlabUrl={gitlabUrl}
+          accessToken={accessToken}
           onApiKeyChange={setApiKey}
           onBaseURLChange={setBaseURL}
           onModelChange={setModel}
           onGitlabTokenChange={setGitlabToken}
           onGitlabUrlChange={setGitlabUrl}
+          onAccessTokenChange={setAccessToken}
           onSave={saveSettings}
           onClose={() => setShowSettings(false)}
         />

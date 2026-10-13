@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { AlertTriangle, AlertOctagon, RefreshCw, X, ChevronRight } from "lucide-react";
 import type { Insight } from "@/lib/insights";
+import { authHeaders } from "@/lib/auth";
 
 interface InsightBannerProps {
   onAnalyze: (prompt: string) => void;
@@ -28,7 +29,7 @@ export function InsightBanner({ onAnalyze }: InsightBannerProps) {
   // setState 全部发生在异步回调 / 事件处理器中。
   const loadInsights = useCallback(async (): Promise<InsightsResponse> => {
     try {
-      const res = await fetch("/api/insights");
+      const res = await fetch("/api/insights", { headers: authHeaders() });
       return (await res.json()) as InsightsResponse;
     } catch (err) {
       return {

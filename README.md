@@ -48,6 +48,7 @@ pnpm dev        # http://localhost:3006
 | `OPENAI_MODEL` / `LLM_MODEL` | 模型名 | `gpt-4o-mini` |
 | `PGUSER` / `PGHOST` / `PGDATABASE` / `PGPASSWORD` / `PGPORT` | 分析库连接（缺表时自动建表并写入示例数据） | 本机 `openui_analytics` 库 |
 | GitLab MCP Endpoint / Token | 在页面「设置」中配置，存于浏览器 localStorage | `http://127.0.0.1:5002/mcp` |
+| `OPENUI_API_AUTH_TOKEN` | 部署模式的 API 鉴权令牌；配置后所有 `/api/*` 请求须携带 `Authorization: Bearer <token>`（页面「设置 → 访问令牌」），未配置则本地免鉴权 | 无 |
 
 禅道数据源依赖本机已登录的 `zentao` CLI（`zentao mcp --read-only`），无需额外配置。
 

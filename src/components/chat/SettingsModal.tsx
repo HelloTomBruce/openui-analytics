@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { X, Sliders, Key, Globe, Bot, Database } from "lucide-react";
 import type { DataSourceDescriptor, HealthResult } from "@/mcp/registry";
+import { authHeaders } from "@/lib/auth";
 
 interface DataSourcesResponse {
   sources: DataSourceDescriptor[];
@@ -13,7 +14,7 @@ async function loadDataSources(): Promise<DataSourcesResponse | null> {
   try {
     // 透传页面设置中的 GitLab 配置，使探活与 /api/analyze 实际使用的配置一致。
     // 走自定义请求头而非 URL query，避免 token 进入访问日志/浏览器历史。
-    const headers: Record<string, string> = {};
+    const headers: Record<string, string> = { ...authHeaders() };
     if (typeof window !== "undefined") {
       const gitlabUrl = localStorage.getItem("openui_gitlab_url");
       const gitlabToken = localStorage.getItem("openui_gitlab_token");
@@ -33,11 +34,13 @@ interface SettingsModalProps {
   model: string;
   gitlabToken: string;
   gitlabUrl: string;
+  accessToken: string;
   onApiKeyChange: (v: string) => void;
   onBaseURLChange: (v: string) => void;
   onModelChange: (v: string) => void;
   onGitlabTokenChange: (v: string) => void;
   onGitlabUrlChange: (v: string) => void;
+  onAccessTokenChange: (v: string) => void;
   onSave: () => void;
   onClose: () => void;
 }
@@ -48,11 +51,13 @@ export function SettingsModal({
   model,
   gitlabToken,
   gitlabUrl,
+  accessToken,
   onApiKeyChange,
   onBaseURLChange,
   onModelChange,
   onGitlabTokenChange,
   onGitlabUrlChange,
+  onAccessTokenChange,
   onSave,
   onClose,
 }: SettingsModalProps) {
@@ -127,6 +132,20 @@ export function SettingsModal({
               value={model}
               onChange={(e) => onModelChange(e.target.value)}
               placeholder="gpt-4o-mini / deepseek-chat"
+              className="w-full p-2.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 font-mono"
+            />
+          </div>
+
+          <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
+            <label className="block text-slate-500 mb-1 font-medium flex items-center gap-1">
+              <Key className="w-3.5 h-3.5" />
+              <span>访问令牌（部署鉴权，可选）</span>
+            </label>
+            <input
+              type="password"
+              value={accessToken}
+              onChange={(e) => onAccessTokenChange(e.target.value)}
+              placeholder="服务端配置 OPENUI_API_AUTH_TOKEN 时必填"
               className="w-full p-2.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 font-mono"
             />
           </div>
