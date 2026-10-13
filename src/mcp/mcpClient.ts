@@ -44,27 +44,29 @@ interface McpContentItem {
 }
 
 /**
- * 从 MCP Server 获取转换后的 OpenAI / LLM 标准 Function Tools 列表
+ * 动态发现 PostgreSQL MCP 工具并挂载至 Vercel AI SDK。
+ * 与 GitLab/ZenTao 同一 pattern：工具定义以 MCP Server 为唯一事实来源，
+ * 路由层不再手写重复包装。
  */
-export async function getOpenAIToolsFromMcp(): Promise<Array<{
-  type: "function";
-  function: {
-    name: string;
-    description?: string;
-    parameters: unknown;
-  };
-}>> {
+export async function getPostgresAiTools(): Promise<Record<string, CoreTool>> {
   const client = await getPostgresMcpClient();
-  const result = await client.listTools();
+  const { tools } = await client.listTools();
+  const aiTools: Record<string, CoreTool> = {};
 
-  return result.tools.map((tool) => ({
-    type: "function",
-    function: {
-      name: tool.name,
-      description: tool.description,
-      parameters: tool.inputSchema,
-    },
-  }));
+  for (const mcpTool of tools) {
+    aiTools[mcpTool.name] = tool({
+      description: mcpTool.description || mcpTool.name,
+      parameters: jsonSchema<Record<string, unknown>>(
+        (mcpTool.inputSchema as Record<string, unknown>) || { type: "object" }
+      ),
+      execute: async (args) => {
+        console.log(`[PostgreSQL MCP Tool] execute ${mcpTool.name}:`, args);
+        return callMcpTool(mcpTool.name, args);
+      },
+    });
+  }
+
+  return aiTools;
 }
 
 /**

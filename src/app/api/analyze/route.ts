@@ -1,7 +1,7 @@
 import { streamText, tool, jsonSchema } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
 import { getOpenUISystemPrompt } from "@/lib/prompt";
-import { callMcpTool, getGitLabAiTools } from "@/mcp/mcpClient";
+import { getPostgresAiTools, getGitLabAiTools } from "@/mcp/mcpClient";
 import { getZentaoAiTools } from "@/mcp/zentaoMcpClient";
 import { getCrossSourceLinks } from "@/lib/crossSourceMap";
 
@@ -50,17 +50,23 @@ export async function POST(req: Request) {
       baseURL: baseURL.replace(/\/+$/, ""),
     });
 
-    // 动态获取外部 GitLab MCP 与 本地 ZenTao MCP 工具；单一数据源失败时降级为空工具集而非拖垮整个请求
-    const [gitlabResult, zentaoResult] = await Promise.allSettled([
+    // 动态发现 PostgreSQL（进程内 MCP）、GitLab MCP 与 ZenTao MCP 工具；
+    // 单一数据源失败时降级为空工具集而非拖垮整个请求
+    const [postgresResult, gitlabResult, zentaoResult] = await Promise.allSettled([
+      getPostgresAiTools(),
       getGitLabAiTools(clientGitLabUrl, clientGitLabToken),
       getZentaoAiTools(),
     ]);
+    if (postgresResult.status === "rejected") {
+      console.warn("[Analyze API] PostgreSQL MCP 工具加载失败，降级为空工具集:", postgresResult.reason);
+    }
     if (gitlabResult.status === "rejected") {
       console.warn("[Analyze API] GitLab MCP 工具加载失败，降级为空工具集:", gitlabResult.reason);
     }
     if (zentaoResult.status === "rejected") {
       console.warn("[Analyze API] ZenTao MCP 工具加载失败，降级为空工具集:", zentaoResult.reason);
     }
+    const postgresTools = postgresResult.status === "fulfilled" ? postgresResult.value : {};
     const gitlabTools = gitlabResult.status === "fulfilled" ? gitlabResult.value : {};
     const zentaoTools = zentaoResult.status === "fulfilled" ? zentaoResult.value : {};
 
@@ -70,56 +76,7 @@ export async function POST(req: Request) {
       messages,
       temperature: 1,
       tools: {
-        execute_sql: tool({
-          description: "在 PostgreSQL 数据库中安全执行只读 SELECT 查询以获取指标数据",
-          parameters: jsonSchema<{ sql: string }>({
-            type: "object",
-            properties: {
-              sql: {
-                type: "string",
-                description: "标准的 PostgreSQL SELECT 查询，例如: SELECT channel, AVG(cac) FROM channel_metrics GROUP BY channel",
-              },
-            },
-            required: ["sql"],
-          }),
-          execute: async ({ sql }) => {
-            console.log("[Vercel AI SDK -> MCP Tool] execute_sql:", sql);
-            return await callMcpTool("execute_sql", { sql });
-          },
-        }),
-        list_tables: tool({
-          description: "获取数据库中所有可用于商业分析的业务数据表名称及描述",
-          parameters: jsonSchema<{ keyword?: string }>({
-            type: "object",
-            properties: {
-              keyword: {
-                type: "string",
-                description: "可选的表名或业务主题过滤关键词",
-              },
-            },
-          }),
-          execute: async () => {
-            console.log("[Vercel AI SDK -> MCP Tool] list_tables");
-            return await callMcpTool("list_tables", {});
-          },
-        }),
-        describe_table: tool({
-          description: "按需查看指定数据表的列名和字段类型",
-          parameters: jsonSchema<{ table_name: string }>({
-            type: "object",
-            properties: {
-              table_name: {
-                type: "string",
-                description: "数据表名，例如: channel_metrics, sales_rep_performance, monthly_trends",
-              },
-            },
-            required: ["table_name"],
-          }),
-          execute: async ({ table_name }) => {
-            console.log("[Vercel AI SDK -> MCP Tool] describe_table:", table_name);
-            return await callMcpTool("describe_table", { table_name });
-          },
-        }),
+        ...postgresTools,
         cross_source_link: tool({
           description: "查询禅道项目与 GitLab 仓库的关联映射，用于跨源联合分析（迭代进度 × 代码活跃度）。映射缺失时返回 confidence=none，此时应提示用户补充映射，不得编造关联结果。",
           parameters: jsonSchema<{ zentao_project_id: string }>({

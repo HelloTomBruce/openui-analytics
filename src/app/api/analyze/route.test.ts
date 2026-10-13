@@ -6,7 +6,7 @@ import { getZentaoAiTools } from "@/mcp/zentaoMcpClient";
 import { streamText } from "ai";
 
 vi.mock("@/mcp/mcpClient", () => ({
-  callMcpTool: vi.fn(),
+  getPostgresAiTools: vi.fn(async () => ({})),
   getGitLabAiTools: vi.fn(),
 }));
 
