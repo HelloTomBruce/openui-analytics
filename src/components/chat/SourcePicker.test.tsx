@@ -57,6 +57,18 @@ describe("SourcePicker", () => {
     expect(onChange).toHaveBeenLastCalledWith(["postgres", "jira", "mysql-a"]);
   });
 
+  it("部分勾选状态下取消一项得到剩余子集", () => {
+    const onChange = vi.fn();
+    render(
+      <SourcePicker sources={SOURCES} selected={["postgres"]} onChange={onChange} />
+    );
+    fireEvent.click(screen.getByRole("button", { name: /数据源/ }));
+
+    fireEvent.click(screen.getByLabelText("PostgreSQL 分析库"));
+
+    expect(onChange).toHaveBeenLastCalledWith([]);
+  });
+
   it("selected 空数组时全部未勾选，计数 0/3", () => {
     render(<SourcePicker sources={SOURCES} selected={[]} onChange={vi.fn()} />);
     fireEvent.click(screen.getByRole("button", { name: /数据源/ }));

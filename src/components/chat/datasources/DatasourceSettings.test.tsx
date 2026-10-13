@@ -183,6 +183,50 @@ describe("DatasourceSettings", () => {
     });
   });
 
+  it("编辑 http 源：URL 留空提交时 PATCH body 不含 url（脱敏值不回填）", async () => {
+    renderSettings();
+    await screen.findByText("Jira MCP");
+
+    fireEvent.click(screen.getByRole("button", { name: /编辑 jira/ }));
+    const urlInput = await screen.findByLabelText(/URL/);
+    // 表单初值为空且提示留空保持不变（脱敏值仅展示）
+    expect(urlInput).toHaveValue("");
+    expect(urlInput).toHaveAttribute("placeholder", expect.stringContaining("留空保持不变"));
+    fireEvent.change(screen.getByLabelText(/名称/), { target: { value: "Jira MCP 2" } });
+    fireEvent.click(screen.getByRole("button", { name: /保存/ }));
+
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find(
+        (c) => String(c[0]) === "/api/datasources/jira" && c[1]?.method === "PATCH"
+      );
+      expect(call).toBeTruthy();
+      const body = JSON.parse(call![1].body as string);
+      expect(body).not.toHaveProperty("url");
+      expect(body).not.toHaveProperty("token");
+      expect(body.name).toBe("Jira MCP 2");
+    });
+  });
+
+  it("编辑 db 源：连接串留空提交时 PATCH body 不含 connectionString", async () => {
+    renderSettings();
+    await screen.findByText("订单库");
+
+    fireEvent.click(screen.getByRole("button", { name: /编辑 mysql-a/ }));
+    await screen.findByLabelText(/连接串/);
+    fireEvent.change(screen.getByLabelText(/名称/), { target: { value: "订单库 2" } });
+    fireEvent.click(screen.getByRole("button", { name: /保存/ }));
+
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find(
+        (c) => String(c[0]) === "/api/datasources/mysql-a" && c[1]?.method === "PATCH"
+      );
+      expect(call).toBeTruthy();
+      const body = JSON.parse(call![1].body as string);
+      expect(body).not.toHaveProperty("connectionString");
+      expect(body.name).toBe("订单库 2");
+    });
+  });
+
   it("启停 toggle 发送 PATCH {enabled}", async () => {
     renderSettings();
     await screen.findByText("订单库");

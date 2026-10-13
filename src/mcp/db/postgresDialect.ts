@@ -15,9 +15,12 @@ export const postgresDialect: DbDialect = {
       connectionTimeoutMillis: 3000,
       max: 2,
     });
+    // 持住一根专用连接：只读事务 / statement_timeout / 业务查询必须在同一连接上生效，
+    // 否则 Pool 逐次取连接会让 BEGIN READ ONLY 形同虚设
+    const dedicated = await pool.connect();
     return {
       query: async (sql: string, params?: unknown[]) => {
-        const res = await pool.query(sql, params);
+        const res = await dedicated.query(sql, params);
         const result: DbQueryResult = {
           rows: res.rows as Record<string, unknown>[],
           rowCount: res.rowCount ?? res.rows.length,
@@ -25,7 +28,11 @@ export const postgresDialect: DbDialect = {
         return result;
       },
       close: async () => {
-        await pool.end();
+        try {
+          dedicated.release();
+        } finally {
+          await pool.end();
+        }
       },
     };
   },

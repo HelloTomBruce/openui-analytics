@@ -25,6 +25,9 @@ interface FormState {
   dbType: "postgres" | "mysql";
   connectionString: string;
   hasExistingToken: boolean;
+  /** 编辑模式下展示脱敏预览（真实凭证永不回填表单） */
+  urlPreview: string;
+  connPreview: string;
 }
 
 const CLOSED_FORM: null = null;
@@ -67,6 +70,8 @@ export function DatasourceSettings({
       dbType: "postgres",
       connectionString: "",
       hasExistingToken: false,
+      urlPreview: "",
+      connPreview: "",
     });
   };
 
@@ -77,12 +82,14 @@ export function DatasourceSettings({
       id: s.id,
       name: s.name,
       kind: s.kind === "db" ? "db" : "http-mcp",
-      url: s.kind === "http-mcp" ? (s.maskedUrl ?? "") : "",
+      url: "",
       token: "",
       dbType: s.dbType ?? "postgres",
-      connectionString:
-        s.kind === "db" ? (s.maskedConnectionString ?? "") : "",
+      connectionString: "",
       hasExistingToken: Boolean(s.hasToken),
+      // 脱敏值仅作 placeholder 展示；若回填表单并在提交时发送，会把 *** 写成真实凭证
+      urlPreview: s.kind === "http-mcp" ? (s.maskedUrl ?? "") : "",
+      connPreview: s.kind === "db" ? (s.maskedConnectionString ?? "") : "",
     });
   };
 
@@ -111,13 +118,14 @@ export function DatasourceSettings({
       else setErrors(result.errors ?? ["创建失败"]);
       return;
     }
-    // 编辑：token 留空 = 不更新（不发送字段）
+    // 编辑：token/url/connectionString 留空 = 不更新（不发送字段），脱敏值绝不作为新值提交
     const patch: Record<string, unknown> = { name: form.name.trim() };
     if (form.kind === "http-mcp") {
-      patch.url = form.url.trim();
+      if (form.url.trim()) patch.url = form.url.trim();
       if (form.token.trim()) patch.token = form.token.trim();
     } else {
-      patch.connectionString = form.connectionString.trim();
+      if (form.connectionString.trim())
+        patch.connectionString = form.connectionString.trim();
     }
     const result = await updateSource(form.id, patch);
     if (result.ok) closeForm();
@@ -338,7 +346,11 @@ export function DatasourceSettings({
                   type="text"
                   value={form.url}
                   onChange={(e) => setForm({ ...form, url: e.target.value })}
-                  placeholder="http://127.0.0.1:6000/mcp"
+                  placeholder={
+                    form.mode === "edit" && form.urlPreview
+                      ? `${form.urlPreview}（留空保持不变）`
+                      : "http://127.0.0.1:6000/mcp"
+                  }
                   className={inputClass}
                 />
               </div>
@@ -392,7 +404,11 @@ export function DatasourceSettings({
                   onChange={(e) =>
                     setForm({ ...form, connectionString: e.target.value })
                   }
-                  placeholder="mysql://user:pass@host:3306/db"
+                  placeholder={
+                    form.mode === "edit" && form.connPreview
+                      ? `${form.connPreview}（留空保持不变）`
+                      : "mysql://user:pass@host:3306/db"
+                  }
                   className={inputClass}
                 />
               </div>

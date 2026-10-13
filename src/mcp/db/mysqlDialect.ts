@@ -22,8 +22,12 @@ export const mysqlDialect: DbDialect = {
       connectTimeout: 3000,
     });
     return {
-      query: async (sql: string) => {
-        const [rows] = await pool.query(sql);
+      query: async (sql: string, params?: unknown[]) => {
+        // 占位符参数必须透传（describeTable 依赖 ? 绑定）；无参数时不带第二参
+        const [rows] =
+          params === undefined
+            ? await pool.query(sql)
+            : await pool.query(sql, params);
         const list = Array.isArray(rows) ? rows : [];
         return {
           rows: list as Record<string, unknown>[],

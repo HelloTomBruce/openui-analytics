@@ -30,7 +30,7 @@ export function SourcePicker({ sources, selected, onChange }: SourcePickerProps)
 
   const toggle = (id: string) => {
     if (checkedIds.includes(id)) {
-      onChange(enabledIds.filter((x) => x !== id));
+      onChange(checkedIds.filter((x) => x !== id));
     } else {
       onChange(enabledIds.filter((x) => x === id || checkedIds.includes(x)));
     }
