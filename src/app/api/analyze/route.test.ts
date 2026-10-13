@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { POST } from "./route";
 import { getGitLabAiTools } from "@/mcp/mcpClient";
