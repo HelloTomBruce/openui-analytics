@@ -11,6 +11,7 @@ export interface ReactiveSimulatorProps {
   channelName?: string;
   currentCac?: number;
   cvrRate?: number;
+  avgOrderValue?: number;
 }
 
 export const ReactiveSimulator: React.FC<ReactiveSimulatorProps> = ({
@@ -19,6 +20,7 @@ export const ReactiveSimulator: React.FC<ReactiveSimulatorProps> = ({
   channelName = "TikTok Ads",
   currentCac = 19.87,
   cvrRate = 0.146,
+  avgOrderValue = 1500,
 }) => {
   const triggerAction = useTriggerAction();
   const setFieldValue = useSetFieldValue();
@@ -34,7 +36,7 @@ export const ReactiveSimulator: React.FC<ReactiveSimulatorProps> = ({
   // 实时本地响应式计算 (纯前端毫秒级刷新，不依赖 LLM 延迟)
   const estimatedLeads = targetCac > 0 ? Math.round(budget / targetCac) : 0;
   const estimatedDeals = Math.round(estimatedLeads * (customCvr / 100));
-  const estimatedRevenue = estimatedDeals * 1500; // 假设客单价 1500
+  const estimatedRevenue = estimatedDeals * avgOrderValue;
   const estimatedRoi = budget > 0 ? ((estimatedRevenue - budget) / budget).toFixed(2) : "0";
 
   const handleBudgetChange = (val: number) => {
@@ -118,8 +120,8 @@ export const ReactiveSimulator: React.FC<ReactiveSimulatorProps> = ({
           <input
             type="range"
             min="1000"
-            max="200000"
-            step="1000"
+            max="1000000"
+            step="10000"
             value={budget}
             onChange={(e) => handleBudgetChange(Number(e.target.value))}
             className="w-full h-1.5 bg-slate-200 dark:bg-slate-800 rounded-lg appearance-none cursor-pointer accent-blue-600"
@@ -139,7 +141,7 @@ export const ReactiveSimulator: React.FC<ReactiveSimulatorProps> = ({
             max="100"
             step="1"
             value={targetCac}
-            onChange={(e) => setTargetCac(Number(e.target.value))}
+            onChange={(e) => setTargetCac(Math.max(0, Number(e.target.value)))}
             className="w-full h-1.5 bg-slate-200 dark:bg-slate-800 rounded-lg appearance-none cursor-pointer accent-emerald-600"
           />
         </div>
@@ -157,7 +159,7 @@ export const ReactiveSimulator: React.FC<ReactiveSimulatorProps> = ({
             max="40"
             step="1"
             value={customCvr}
-            onChange={(e) => setCustomCvr(Number(e.target.value))}
+            onChange={(e) => setCustomCvr(Math.min(100, Math.max(0, Number(e.target.value))))}
             className="w-full h-1.5 bg-slate-200 dark:bg-slate-800 rounded-lg appearance-none cursor-pointer accent-violet-600"
           />
         </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import { Flame } from "lucide-react";
 import { parseArrayProp } from "@/lib/parseProp";
 
@@ -67,6 +67,13 @@ export const ContributionHeatmap: React.FC<ContributionHeatmapProps> = ({
 
   const totalCount = safeData.reduce((acc, curr) => acc + curr.count, 0);
 
+  // 悬浮气泡：fixed 定位脱离 overflow-x-auto 裁剪上下文
+  const [tooltip, setTooltip] = useState<{
+    x: number;
+    y: number;
+    text: React.ReactNode;
+  } | null>(null);
+
   return (
     <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 shadow-xs">
       <div className="flex items-center justify-between mb-4">
@@ -100,14 +107,22 @@ export const ContributionHeatmap: React.FC<ContributionHeatmapProps> = ({
                 return (
                   <div
                     key={`heatmap-cell-${idx}`}
-                    className={`w-5 h-5 rounded-sm ${cellBg} transition-transform hover:scale-125 cursor-pointer relative group`}
+                    className={`w-5 h-5 rounded-sm ${cellBg} transition-transform hover:scale-125 cursor-pointer`}
                     title={`${item.date || item.day || `点位 ${idx + 1}`}: ${item.count} 次`}
-                  >
-                    {/* 悬浮气泡 */}
-                    <div className="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 hidden group-hover:block z-20 bg-slate-900 text-white text-[10px] py-1 px-2 rounded shadow-lg whitespace-nowrap pointer-events-none">
-                      {item.date || item.day || item.label || `#${idx + 1}`}: <span className="font-bold">{item.count}</span>
-                    </div>
-                  </div>
+                    onMouseEnter={(e) => {
+                      const rect = e.currentTarget.getBoundingClientRect();
+                      setTooltip({
+                        x: rect.left + rect.width / 2,
+                        y: rect.top,
+                        text: (
+                          <>
+                            {item.date || item.day || item.label || `#${idx + 1}`}: <span className="font-bold">{item.count}</span>
+                          </>
+                        ),
+                      });
+                    }}
+                    onMouseLeave={() => setTooltip(null)}
+                  />
                 );
               })}
             </div>
@@ -125,6 +140,20 @@ export const ContributionHeatmap: React.FC<ContributionHeatmapProps> = ({
           </div>
         )}
       </div>
+
+      {/* 悬浮气泡：fixed 定位，渲染在 overflow 容器外，避免被裁剪 */}
+      {tooltip && (
+        <div
+          className="fixed z-20 bg-slate-900 text-white text-[10px] py-1 px-2 rounded shadow-lg whitespace-nowrap pointer-events-none"
+          style={{
+            left: tooltip.x,
+            top: tooltip.y,
+            transform: "translate(-50%, calc(-100% - 4px))",
+          }}
+        >
+          {tooltip.text}
+        </div>
+      )}
     </div>
   );
 };

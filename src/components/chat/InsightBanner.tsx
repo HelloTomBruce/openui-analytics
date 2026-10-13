@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { AlertTriangle, AlertOctagon, RefreshCw, X, ChevronRight } from "lucide-react";
 import type { Insight } from "@/lib/insights";
 import { authHeaders } from "@/lib/auth";
@@ -15,6 +15,31 @@ interface InsightsResponse {
   generatedAt?: string;
 }
 
+const DISMISSED_KEY = "openui_insights_dismissed";
+
+/** 读取已关闭的洞察消息列表（localStorage，JSON 字符串数组）。 */
+function readDismissedMessages(): string[] {
+  try {
+    const raw = localStorage.getItem(DISMISSED_KEY);
+    if (!raw) return [];
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed)
+      ? parsed.filter((m): m is string => typeof m === "string")
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+/** 新拉取的洞察消息集合与已关闭集合完全一致时返回 true（无需再次展示）。 */
+function isSameMessageSet(insights: Insight[], dismissed: string[]): boolean {
+  const messages = insights.map((i) => i.message);
+  return (
+    messages.length === dismissed.length &&
+    messages.every((m) => dismissed.includes(m))
+  );
+}
+
 /**
  * 主动洞察横幅：进入会话时拉取 /api/insights，
  * 存在 warning/critical 洞察时展示可折叠横幅，支持刷新与"展开分析"。
@@ -24,6 +49,7 @@ export function InsightBanner({ onAnalyze }: InsightBannerProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [loading, setLoading] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
+  const mountedRef = useRef(true);
 
   // 纯加载器：不含任何 setState，可安全地在 effect 中调用；
   // setState 全部发生在异步回调 / 事件处理器中。
@@ -40,10 +66,18 @@ export function InsightBanner({ onAnalyze }: InsightBannerProps) {
   }, []);
 
   useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
     let cancelled = false;
     loadInsights().then((data) => {
       if (cancelled) return;
-      setInsights(data.insights || []);
+      const next = data.insights || [];
+      setInsights(isSameMessageSet(next, readDismissedMessages()) ? [] : next);
       setFetchError(data.error || null);
     });
     return () => {
@@ -54,9 +88,24 @@ export function InsightBanner({ onAnalyze }: InsightBannerProps) {
   const handleRefresh = async () => {
     setLoading(true);
     const data = await loadInsights();
-    setInsights(data.insights || []);
+    if (!mountedRef.current) return;
+    const next = data.insights || [];
+    setInsights(isSameMessageSet(next, readDismissedMessages()) ? [] : next);
     setFetchError(data.error || null);
     setLoading(false);
+  };
+
+  const handleDismiss = () => {
+    try {
+      localStorage.setItem(
+        DISMISSED_KEY,
+        JSON.stringify(insights.map((i) => i.message))
+      );
+    } catch {
+      // 忽略持久化失败（如隐私模式）
+    }
+    setInsights([]);
+    setFetchError(null);
   };
 
   // 无洞察且无错误时不渲染（静默）
@@ -116,10 +165,7 @@ export function InsightBanner({ onAnalyze }: InsightBannerProps) {
           <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
         </button>
         <button
-          onClick={() => {
-            setInsights([]);
-            setFetchError(null);
-          }}
+          onClick={handleDismiss}
           className="p-1 rounded hover:bg-white/60 dark:hover:bg-slate-900/60 transition-colors"
           title="关闭"
         >

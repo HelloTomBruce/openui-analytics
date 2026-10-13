@@ -14,6 +14,8 @@ import { ChatInput } from "@/components/chat/ChatInput";
 import { SettingsModal } from "@/components/chat/SettingsModal";
 import { DevToolsPanel } from "@/components/chat/DevToolsPanel";
 import { InsightBanner } from "@/components/chat/InsightBanner";
+import { Toaster } from "@/components/Toaster";
+import { toast } from "@/lib/toast";
 
 /**
  * 组合层：唯一接线点。
@@ -132,7 +134,7 @@ export default function ChatDashboard() {
   );
 
   const handleDevToolsAction = useCallback((msg: string) => {
-    alert(`触发 Action: ${msg}`);
+    toast(`触发 Action: ${msg}`, "info");
   }, []);
 
   // 稳定回调：配合子组件 memo 化，避免每次渲染传递新闭包
@@ -262,6 +264,8 @@ export default function ChatDashboard() {
           onClose={handleCloseSettings}
         />
       )}
+
+      <Toaster />
     </div>
   );
 }

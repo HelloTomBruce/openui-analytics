@@ -164,17 +164,15 @@ export function ChatSidebar({
           </div>
 
           {/* 清空历史按钮 */}
-          {sessions.length > 1 && (
-            <div className="pt-1 border-t border-slate-100 dark:border-slate-800 flex justify-end">
-              <button
-                onClick={onClearAllSessions}
-                className="text-[11px] text-slate-400 hover:text-rose-600 py-1 transition-colors flex items-center gap-1"
-              >
-                <Trash2 className="w-3 h-3" />
-                <span>清空所有记录</span>
-              </button>
-            </div>
-          )}
+          <div className="pt-1 border-t border-slate-100 dark:border-slate-800 flex justify-end">
+            <button
+              onClick={onClearAllSessions}
+              className="text-[11px] text-slate-400 hover:text-rose-600 py-1 transition-colors flex items-center gap-1"
+            >
+              <Trash2 className="w-3 h-3" />
+              <span>清空所有记录</span>
+            </button>
+          </div>
         </div>
       )}
 
@@ -184,9 +182,9 @@ export function ChatSidebar({
           <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider px-1 pb-1">
             一键带入预设分析模板
           </div>
-          {PRESET_QUERIES.map((preset, idx) => (
+          {PRESET_QUERIES.map((preset) => (
             <button
-              key={idx}
+              key={preset}
               onClick={() => onPresetSelect(preset)}
               className="w-full text-left text-xs p-2.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 transition-colors flex items-start gap-2"
             >

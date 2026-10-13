@@ -23,7 +23,7 @@ export const GaugeProgress: React.FC<GaugeProgressProps> = ({
   const numCurrent = typeof current === "number" ? current : Number(current) || 0;
   const numTarget = typeof target === "number" ? target : Number(target) || 100;
 
-  const percentage = numTarget > 0 ? Math.min(Math.round((numCurrent / numTarget) * 100), 200) : 0;
+  const percentage = numTarget > 0 ? Math.max(0, Math.round((numCurrent / numTarget) * 100)) : 0;
   const isCompleted = percentage >= 100;
   const isWarning = percentage < 60;
 

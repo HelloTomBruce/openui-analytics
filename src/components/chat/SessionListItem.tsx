@@ -5,7 +5,7 @@ import { MessageSquare, Edit3, Trash2, Check } from "lucide-react";
 import type { ChatSession } from "@/lib/sessionStorage";
 
 export function formatSessionTime(timestamp: number): string {
-  const diffMs = Date.now() - timestamp;
+  const diffMs = Math.max(0, Date.now() - timestamp);
   const diffMinutes = Math.floor(diffMs / (1000 * 60));
   const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
   const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));

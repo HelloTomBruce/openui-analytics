@@ -1,6 +1,7 @@
 "use client";
 
 import { toCsvContent, downloadCsv } from "@/lib/csv";
+import { toast } from "@/lib/toast";
 
 /**
  * OpenUI 客户端本地工具集合 (Client Tool Provider)
@@ -27,9 +28,7 @@ export const clientTools: Record<string, (args: Record<string, unknown>) => Prom
     }
 
     if (rows.length === 0) {
-      if (typeof window !== "undefined") {
-        alert("⚠️ 没有可导出的数据行");
-      }
+      toast("没有可导出的数据行", "error");
       return { success: false, message: "No data" };
     }
 
@@ -65,9 +64,7 @@ export const clientTools: Record<string, (args: Record<string, unknown>) => Prom
 
     if (typeof navigator !== "undefined" && navigator.clipboard) {
       await navigator.clipboard.writeText(text);
-      if (typeof window !== "undefined") {
-        alert(`✅ 已复制 ${label} 到剪贴板！`);
-      }
+      toast(`已复制 ${label} 到剪贴板`, "success");
       return { success: true };
     }
     return { success: false, message: "Clipboard API not available" };
@@ -91,6 +88,7 @@ export const clientTools: Record<string, (args: Record<string, unknown>) => Prom
     const metric = typeof rawArgs.metric === "string" ? rawArgs.metric : "指标";
     const newTarget = rawArgs.newTarget;
     console.log(`[OpenUI Mutation] 更新业务目标: ${metric} -> ${newTarget}`);
+    toast(`已将「${metric}」目标调整为 ${newTarget}`, "success");
     return {
       success: true,
       updatedAt: new Date().toISOString(),
