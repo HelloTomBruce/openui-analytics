@@ -5,7 +5,7 @@ import { NextRequest, NextResponse } from "next/server";
  *
  * 配置环境变量 OPENUI_API_AUTH_TOKEN 后，所有 /api/* 请求必须携带
  * `Authorization: Bearer <token>`；未配置时放行（本地开发零负担）。
- * 前端在「LLM 设置 → 访问令牌」中配置，随所有 API 请求头自动携带。
+ * 前端在「设置 → 模型配置 → 访问令牌」中配置，随所有 API 请求头自动携带。
  */
 export function middleware(request: NextRequest) {
   const token = process.env.OPENUI_API_AUTH_TOKEN;

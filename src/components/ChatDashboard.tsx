@@ -100,6 +100,14 @@ export default function ChatDashboard() {
     () => ({ ...chatBody, sources: activeSession?.enabledSources }),
     [chatBody, activeSession?.enabledSources]
   );
+  // 当前会话实际启用的源（名称+id）：驱动加载提示与工具归因展示；useMemo 保 MessageItem memo 生效
+  const sessionSources = useMemo(() => {
+    const sel = activeSession?.enabledSources;
+    const list = sel
+      ? enabledPickerSources.filter((s) => sel.includes(s.id))
+      : enabledPickerSources;
+    return list.map((s) => ({ id: s.id, name: s.name }));
+  }, [enabledPickerSources, activeSession?.enabledSources]);
 
   // messagesRef 始终指向最新 messages，规避 onFinish 闭包过期问题
   const messagesRef = useRef<Message[]>([]);
@@ -248,6 +256,7 @@ export default function ChatDashboard() {
           status={status}
           error={error}
           showRawLang={showRawLang}
+          activeSources={sessionSources}
           onRendererAction={handleRendererAction}
           onReload={reload}
         />

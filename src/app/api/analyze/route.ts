@@ -49,7 +49,7 @@ export async function POST(req: Request) {
 
     // 当未配置 Key 时，返回合规的 Data Stream 协议响应
     if (!apiKey) {
-      const msg = `⚠️ 请先在右上角「LLM 设置」中配置您的 API Key。\n\n\`\`\`openui\nInsightBox(type="warning", title="未检测到 LLM API Key", content="请点击右上角「LLM 设置」输入 API Key，开启由 Vercel AI SDK + PostgreSQL, GitLab & ZenTao MCP 驱动的流式数据分析看板。")\n\`\`\``;
+      const msg = `⚠️ 请先在右上角「设置」中配置您的 API Key。\n\n\`\`\`openui\nInsightBox(type="warning", title="未检测到 LLM API Key", content="请点击右上角「设置」进入「模型配置」输入 API Key，开启由 Vercel AI SDK 与多数据源 MCP（内置 + 动态配置）驱动的流式数据分析看板。")\n\`\`\``;
       const dataStreamChunk = `0:${JSON.stringify(msg)}\nd:{"finishReason":"stop","usage":{"promptTokens":0,"completionTokens":0}}\n`;
 
       return new Response(dataStreamChunk, {

@@ -18,7 +18,28 @@ interface MessageItemProps {
   msg: Message;
   isStreaming: boolean;
   showRawLang: boolean;
+  /** 当前会话启用源（工具调用归因展示）；memo 靠引用稳定，由父层 useMemo 供给 */
+  activeSources?: { id: string; name: string }[];
   onRendererAction: (actionPrompt: string) => void;
+}
+
+/** 工具调用徽标：内置三源固定标签，动态源按 <id>_ 前缀归因到源名称 */
+function toolBadgeText(
+  toolName: string,
+  args: Record<string, unknown> | undefined,
+  activeSources?: { id: string; name: string }[]
+): string {
+  if (toolName === "execute_sql")
+    return `⚡ [PostgreSQL MCP] 执行 SQL: ${args?.sql || ""}`;
+  if (toolName.startsWith("zentao_")) return `⚡ [ZenTao 禅道] 调用: ${toolName}`;
+  if (toolName.startsWith("gitlab_")) return `⚡ [GitLab MCP] 调用: ${toolName}`;
+  const dyn = activeSources?.find((s) => toolName.startsWith(`${s.id}_`));
+  if (dyn) {
+    return toolName.endsWith("execute_sql")
+      ? `⚡ [${dyn.name}] 执行 SQL: ${args?.sql || ""}`
+      : `⚡ [${dyn.name}] 调用: ${toolName}`;
+  }
+  return `⚡ [MCP Tool] 调用: ${toolName}`;
 }
 
 /**
@@ -29,6 +50,7 @@ const MessageItem = React.memo(function MessageItem({
   msg,
   isStreaming,
   showRawLang,
+  activeSources,
   onRendererAction,
 }: MessageItemProps) {
   const rawContent = msg.content;
@@ -68,13 +90,7 @@ const MessageItem = React.memo(function MessageItem({
                 >
                   <Loader2 className={`w-3.5 h-3.5 ${isRunning ? "animate-spin text-blue-500" : "text-emerald-500"}`} />
                   <span className="font-mono flex-1 truncate">
-                    {tool.toolName === "execute_sql"
-                      ? `⚡ [PostgreSQL MCP] 执行 SQL: ${tool.args?.sql || ""}`
-                      : tool.toolName.startsWith("zentao_")
-                      ? `⚡ [ZenTao 禅道] 调用: ${tool.toolName}`
-                      : tool.toolName.startsWith("gitlab_")
-                      ? `⚡ [GitLab MCP] 调用: ${tool.toolName}`
-                      : `⚡ [MCP Tool] 调用: ${tool.toolName}`}
+                    {toolBadgeText(tool.toolName, tool.args, activeSources)}
                   </span>
                   {isRunning ? (
                     <span className="text-[10px] bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 px-2 py-0.5 rounded font-sans font-medium flex items-center gap-1">
@@ -157,6 +173,8 @@ interface MessageListProps {
   status: string;
   error: Error | undefined;
   showRawLang: boolean;
+  /** 当前会话启用的数据源（加载提示与工具归因），由父层 useMemo 供给 */
+  activeSources?: { id: string; name: string }[];
   onRendererAction: (actionPrompt: string) => void;
   onReload: () => void;
 }
@@ -166,6 +184,7 @@ export function MessageList({
   status,
   error,
   showRawLang,
+  activeSources,
   onRendererAction,
   onReload,
 }: MessageListProps) {
@@ -179,6 +198,7 @@ export function MessageList({
           msg={msg}
           isStreaming={index === messages.length - 1 && status === "streaming"}
           showRawLang={showRawLang}
+          activeSources={activeSources}
           onRendererAction={onRendererAction}
         />
       ))}
@@ -189,7 +209,13 @@ export function MessageList({
           <div className="max-w-4xl rounded-2xl p-4 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-200 rounded-bl-xs w-full shadow-xs space-y-3">
             <div className="flex items-center gap-2 text-xs text-blue-600 dark:text-blue-400 font-medium">
               <Loader2 className="w-4 h-4 animate-spin text-blue-500" />
-              <span>AI 正在分析意图并连接 PostgreSQL / GitLab / ZenTao MCP 数据源...</span>
+              <span>
+                {activeSources && activeSources.length > 0
+                  ? `AI 正在分析意图并连接 ${activeSources
+                      .map((s) => s.name)
+                      .join(" / ")} 数据源...`
+                  : "AI 正在分析意图并连接已启用的数据源..."}
+              </span>
             </div>
             <div className="space-y-2 pt-1">
               <div className="h-3 bg-slate-100 dark:bg-slate-800 rounded-full w-3/4 animate-pulse" />
