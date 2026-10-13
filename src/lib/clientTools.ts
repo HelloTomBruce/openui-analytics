@@ -1,5 +1,7 @@
 "use client";
 
+import { toCsvContent, downloadCsv } from "@/lib/csv";
+
 /**
  * OpenUI 客户端本地工具集合 (Client Tool Provider)
  * 允许大模型生成的 OpenUI 界面直接调用浏览器端本地 API，无需往返服务端
@@ -38,29 +40,18 @@ export const clientTools: Record<string, (args: Record<string, unknown>) => Prom
         : (headers as string[])
       : Object.keys(firstRow);
 
-    const csvContent =
-      "data:text/csv;charset=utf-8,\uFEFF" +
-      columnKeys.join(",") +
-      "\n" +
-      rows
-        .map((row) =>
-          columnKeys
-            .map((k) => {
-              const val = row[k] ?? "";
-              const str = String(val).replace(/"/g, '""');
-              return `"${str}"`;
-            })
-            .join(",")
-        )
-        .join("\n");
+    const headerLabels = headers
+      ? Array.isArray(headers) && typeof headers[0] === "object"
+        ? (headers as Array<{ header: string }>).map((h) => h.header)
+        : (headers as string[])
+      : columnKeys;
 
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", filename.endsWith(".csv") ? filename : `${filename}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    // 转义 / 公式注入防护 / Blob 下载统一走共享工具
+    const csvContent = toCsvContent(
+      headerLabels,
+      rows.map((row) => columnKeys.map((k) => row[k]))
+    );
+    downloadCsv(filename, csvContent);
 
     return { success: true, message: `已成功导出 ${rows.length} 条数据至 ${filename}` };
   },

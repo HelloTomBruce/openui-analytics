@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import { Search, ArrowUpDown, Download } from "lucide-react";
+import { toCsvContent, downloadCsv } from "@/lib/csv";
 
 export interface ColumnConfig {
   key: string;
@@ -103,18 +104,9 @@ export const DataTable: React.FC<DataTableProps> = ({
   };
 
   const exportCSV = () => {
-    const headers = safeColumns.map((c) => c.header).join(",");
-    const rows = sortedData.map((row) =>
-      safeColumns.map((c) => `"${row[c.key] ?? ""}"`).join(",")
-    );
-    const csvContent = "data:text/csv;charset=utf-8," + [headers, ...rows].join("\n");
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `${title || "export"}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    const headers = safeColumns.map((c) => c.header);
+    const rows = sortedData.map((row) => safeColumns.map((c) => row[c.key]));
+    downloadCsv(title || "export", toCsvContent(headers, rows));
   };
 
   return (
