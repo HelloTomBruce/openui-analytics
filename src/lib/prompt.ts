@@ -1,5 +1,21 @@
 import { serverLibrary } from "./serverLibrary";
 
+/**
+ * Prompt 中的 few-shot 示例。导出以便测试校验其与 serverLibrary schema 的一致性
+ * （见 promptExamples.test.ts——示例代码会被 createParser 全量解析校验）。
+ */
+export const promptExample = `root = Root([gauge, grid, funnel, heatmap, radar, action_plan, table, insight])
+gauge = GaugeProgress("Sprint 24 迭代进度达成度", "目标交付 38 个任务", 31, 38, "个", "达成率 81.6%")
+c1 = MetricCard("未关闭 Bug", "23", "-34.3%", "down", "严重 Bug 仅剩 2 个")
+c2 = MetricCard("人均工时饱和度", "86%", "+6.2%", "up", "整体负载健康")
+grid = MetricGrid(2, [c1, c2])
+funnel = FunnelChart("迭代缺陷收敛漏斗", "从发现到关闭的 Bug 生命周期", [{"name":"新增 Bug","value":57,"conversion":"100%"},{"name":"已确认","value":49,"conversion":"86.0%"},{"name":"已解决","value":38,"conversion":"77.6%"},{"name":"已关闭","value":34,"conversion":"89.5%"}], "个")
+heatmap = ContributionHeatmap("核心仓库提交活跃度热力图", "近 12 周 commit 分布", [{"date":"2026-09-28","count":12},{"date":"2026-09-29","count":5},{"date":"2026-09-30","count":18}], "blue")
+radar = RadarChart("团队成员负载与能力画像", "任务量/工时/缺陷修复/代码评审维度", [{"member":"张伟","workload":82,"quality":90},{"member":"李娜","workload":76,"quality":85}], "member", [{"key":"workload","name":"工时负载","color":"#3b82f6"},{"key":"quality","name":"交付质量","color":"#10b981"}])
+action_plan = ActionPlanCard("迭代风险干预建议", "基于 Bug 收敛速度与工时分布测算", [{"title":"为张伟分流 2 个 P3 任务给王强","priority":"high","impact":"预计消除张伟 120% 超载风险","owner":"项目经理"},{"title":"对 2 个严重 Bug 安排今日专项修复","priority":"high","impact":"保障迭代按期关闭","owner":"后端组"}])
+table = DataTable("未关闭 Bug 明细", [{"key":"id","header":"编号"},{"key":"title","header":"标题"},{"key":"severity","header":"严重度"},{"key":"assignedTo","header":"负责人"},{"key":"status","header":"状态"}], [{"id":"BUG-1024","title":"看板图表导出乱码","severity":"严重","assignedTo":"张伟","status":"处理中"},{"id":"BUG-1031","title":"工时统计口径不一致","severity":"一般","assignedTo":"李娜","status":"已确认"}])
+insight = InsightBox("tip", "迭代健康度总结", "Bug 收敛速度高于新增速度，工时分布总体健康，建议优先拦截严重 Bug 并平衡张伟的任务负载。")`;
+
 export function getOpenUISystemPrompt(): string {
   const preamble = `You are an expert Data Analyst & Engineering BI Assistant powered by OpenUI Generative UI and MCP (Model Context Protocol).
 
@@ -71,19 +87,7 @@ You have a rich set of declarative components available:
       "Include ReactiveSimulator when the user is asking about budget simulation, CAC projections, or ROI forecasts.",
       "Include ActionPlanCard whenever providing optimization suggestions so users can take concrete next steps.",
     ],
-    examples: [
-      `root = Root([gauge, grid, funnel, heatmap, radar, action_plan, table, insight])
-gauge = GaugeProgress("Sprint 24 迭代进度达成度", "目标交付 38 个任务", 31, 38, "个", "达成率 81.6%")
-c1 = MetricCard("未关闭 Bug", "23", "-34.3%", "down", "严重 Bug 仅剩 2 个")
-c2 = MetricCard("人均工时饱和度", "86%", "+6.2%", "up", "整体负载健康")
-grid = MetricGrid(2, [c1, c2])
-funnel = FunnelChart("迭代缺陷收敛漏斗", "从发现到关闭的 Bug 生命周期", [{"name":"新增 Bug","value":57,"conversion":"100%"},{"name":"已确认","value":49,"conversion":"86.0%"},{"name":"已解决","value":38,"conversion":"77.6%"},{"name":"已关闭","value":34,"conversion":"89.5%"}], "个")
-heatmap = ContributionHeatmap("核心仓库提交活跃度热力图", "近 12 周 commit 分布", [{"date":"2026-09-28","count":12},{"date":"2026-09-29","count":5},{"date":"2026-09-30","count":18}], "#3b82f6")
-radar = RadarChart("团队成员负载与能力画像", "任务量/工时/缺陷修复/代码评审维度", [{"member":"张伟","workload":82,"quality":90},{"member":"李娜","workload":76,"quality":85}], "member", [{"key":"workload","label":"工时负载","color":"#3b82f6"},{"key":"quality","label":"交付质量","color":"#10b981"}])
-action_plan = ActionPlanCard("迭代风险干预建议", "基于 Bug 收敛速度与工时分布测算", [{"title":"为张伟分流 2 个 P3 任务给王强","priority":"high","impact":"预计消除张伟 120% 超载风险","owner":"项目经理"},{"title":"对 2 个严重 Bug 安排今日专项修复","priority":"high","impact":"保障迭代按期关闭","owner":"后端组"}])
-table = DataTable("未关闭 Bug 明细", [{"key":"id","header":"编号"},{"key":"title","header":"标题"},{"key":"severity","header":"严重度"},{"key":"assignedTo","header":"负责人"},{"key":"status","header":"状态"}], [{"id":"BUG-1024","title":"看板图表导出乱码","severity":"严重","assignedTo":"张伟","status":"处理中"},{"id":"BUG-1031","title":"工时统计口径不一致","severity":"一般","assignedTo":"李娜","status":"已确认"}])
-insight = InsightBox("tip", "迭代健康度总结", "Bug 收敛速度高于新增速度，工时分布总体健康，建议优先拦截严重 Bug 并平衡张伟的任务负载。")`,
-    ],
+    examples: [promptExample],
   };
 
   return serverLibrary.prompt(promptOptions);
