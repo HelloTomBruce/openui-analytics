@@ -1,6 +1,9 @@
-import { describe, it, expect } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { describe, it, expect, afterEach } from "vitest";
+import { render, screen, cleanup } from "@testing-library/react";
 import { FunnelChart } from "./FunnelChart";
+
+// vitest 未开 globals，testing-library 的自动 cleanup 不会注册，需显式清理
+afterEach(cleanup);
 
 describe("FunnelChart 流失率标注", () => {
   it("阶段间连接线展示「当前 → 下一阶段」的流失率", () => {
