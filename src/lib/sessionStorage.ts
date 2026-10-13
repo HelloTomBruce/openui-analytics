@@ -6,6 +6,8 @@ export interface ChatSession {
   createdAt: number;
   updatedAt: number;
   messages: Message[];
+  /** 会话启用的数据源 id；undefined = 全选（跟随全局启用项） */
+  enabledSources?: string[];
 }
 
 const STORAGE_SESSIONS_KEY = "openui_chat_sessions_v1";
@@ -77,6 +79,38 @@ export function generateSessionTitle(firstUserContent: string): string {
     .trim();
   if (!clean) return "新分析会话";
   return clean.length > 20 ? `${clean.slice(0, 20)}...` : clean;
+}
+
+/**
+ * 纯函数：返回带（或去掉）enabledSources 的会话副本；undefined 删除字段恢复全选语义。
+ * useSessionManager 与存储层写入共用，保证两处语义一致。
+ */
+export function applyEnabledSources(
+  session: ChatSession,
+  ids: string[] | undefined
+): ChatSession {
+  const copy = { ...session };
+  if (ids === undefined) {
+    delete copy.enabledSources;
+    return copy;
+  }
+  copy.enabledSources = ids;
+  return copy;
+}
+
+/**
+ * 存储层写入指定会话的 enabledSources（undefined 恢复全选）；未知 id 静默返回。
+ */
+export function setSessionEnabledSources(
+  sessionId: string,
+  ids: string[] | undefined
+): void {
+  if (typeof window === "undefined") return;
+  const sessions = getSavedSessions();
+  const idx = sessions.findIndex((s) => s.id === sessionId);
+  if (idx < 0) return;
+  sessions[idx] = applyEnabledSources(sessions[idx], ids);
+  persistSessions(sessions);
 }
 
 /**

@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, cleanup } from "@testing-library/react";
+import { useChat } from "@ai-sdk/react";
 import ChatDashboard from "../ChatDashboard";
-import { DEFAULT_WELCOME_MESSAGE } from "@/lib/sessionStorage";
+import { DEFAULT_WELCOME_MESSAGE, createNewSession } from "@/lib/sessionStorage";
 
 // mock useChat：返回固定消息列表，避免真实网络流
 vi.mock("@ai-sdk/react", () => ({
@@ -52,6 +53,20 @@ describe("ChatDashboard 守护测试（重构行为锁定）", () => {
     render(<ChatDashboard />);
     expect(screen.getByText("新建对话会话")).toBeInTheDocument();
     expect(screen.getByTitle("配置大模型与 MCP")).toBeInTheDocument();
+  });
+
+  it("useChat body 透传当前会话 enabledSources", () => {
+    const session = createNewSession("带数据源会话");
+    session.enabledSources = ["postgres"];
+    localStorage.setItem("openui_chat_sessions_v1", JSON.stringify([session]));
+    localStorage.setItem("openui_current_session_id_v1", session.id);
+
+    render(<ChatDashboard />);
+
+    const config = vi.mocked(useChat).mock.calls.at(-1)?.[0] as {
+      body?: { sources?: string[] };
+    };
+    expect(config?.body?.sources).toEqual(["postgres"]);
   });
 
   it("首次渲染无 React 错误 / hydration 告警", () => {

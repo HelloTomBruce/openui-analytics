@@ -1,8 +1,11 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import {
   generateSessionTitle,
   createNewSession,
   DEFAULT_WELCOME_MESSAGE,
+  setSessionEnabledSources,
+  getSavedSessions,
+  persistSessions,
 } from "./sessionStorage";
 
 describe("generateSessionTitle", () => {
@@ -29,5 +32,40 @@ describe("createNewSession", () => {
     const session = createNewSession();
     expect(session.id.startsWith("session_")).toBe(true);
     expect(session.messages).toContainEqual(DEFAULT_WELCOME_MESSAGE);
+  });
+});
+
+describe("setSessionEnabledSources", () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it("写入指定会话的 enabledSources 并可读回", () => {
+    const session = createNewSession("测试会话");
+    persistSessions([session]);
+
+    setSessionEnabledSources(session.id, ["postgres", "jira"]);
+
+    const saved = getSavedSessions();
+    expect(saved[0].enabledSources).toEqual(["postgres", "jira"]);
+  });
+
+  it("传 undefined 恢复全选语义（删除字段）", () => {
+    const session = createNewSession("测试会话");
+    session.enabledSources = ["postgres"];
+    persistSessions([session]);
+
+    setSessionEnabledSources(session.id, undefined);
+
+    const saved = getSavedSessions();
+    expect(saved[0].enabledSources).toBeUndefined();
+  });
+
+  it("未知会话 id 不抛错不改数据", () => {
+    const session = createNewSession("测试会话");
+    persistSessions([session]);
+
+    expect(() => setSessionEnabledSources("nope", ["a"])).not.toThrow();
+    expect(getSavedSessions()).toHaveLength(1);
   });
 });

@@ -10,6 +10,7 @@ import {
   setActiveSessionId,
   createNewSession,
   generateSessionTitle,
+  applyEnabledSources,
   DEFAULT_WELCOME_MESSAGE,
 } from "@/lib/sessionStorage";
 
@@ -201,6 +202,16 @@ export function useSessionManager(
 
   const activeSession = sessions.find((s) => s.id === currentSessionId);
 
+  // 更新会话的数据源选择（undefined = 全选）；持久化由单点 effect 完成
+  const updateSessionSources = useCallback(
+    (sessionId: string, ids: string[] | undefined) => {
+      setSessions((prev) =>
+        prev.map((s) => (s.id === sessionId ? applyEnabledSources(s, ids) : s))
+      );
+    },
+    []
+  );
+
   return {
     sessions,
     currentSessionId,
@@ -211,6 +222,7 @@ export function useSessionManager(
     setEditingTitleText,
     initialMessages,
     saveCurrentSessionMessages,
+    updateSessionSources,
     handleCreateNewChat,
     handleSelectSession,
     handleDeleteSession,

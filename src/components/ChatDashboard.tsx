@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useChat } from "@ai-sdk/react";
 import type { Message } from "@ai-sdk/react";
 import { TrendingUp, Plus, Code2, Settings, RefreshCw } from "lucide-react";
@@ -11,6 +11,8 @@ import { useSessionManager, type SetMessagesFn } from "@/hooks/useSessionManager
 import { ChatSidebar } from "@/components/chat/ChatSidebar";
 import { MessageList } from "@/components/chat/MessageList";
 import { ChatInput } from "@/components/chat/ChatInput";
+import { SourcePicker } from "@/components/chat/SourcePicker";
+import { useDatasourceList } from "@/components/chat/datasources/useDatasources";
 import { SettingsModal } from "@/components/chat/SettingsModal";
 import { DevToolsPanel } from "@/components/chat/DevToolsPanel";
 import { InsightBanner } from "@/components/chat/InsightBanner";
@@ -64,6 +66,7 @@ export default function ChatDashboard() {
     setEditingTitleText,
     initialMessages,
     saveCurrentSessionMessages,
+    updateSessionSources,
     handleCreateNewChat,
     handleSelectSession,
     handleDeleteSession,
@@ -75,6 +78,28 @@ export default function ChatDashboard() {
   const handleChatError = useCallback((err: Error) => {
     console.error("Chat error:", err);
   }, []);
+
+  // 会话级数据源：列表来自 /api/datasources，勾选集写入当前会话并随请求体透传
+  const { sources: allDatasources } = useDatasourceList();
+  const enabledPickerSources = useMemo(
+    () => allDatasources.filter((s) => s.enabled !== false),
+    [allDatasources]
+  );
+  const handleSourcesChange = useCallback(
+    (ids: string[]) => {
+      if (!currentSessionId) return;
+      const allIds = enabledPickerSources.map((s) => s.id);
+      const isFullSelection =
+        ids.length === allIds.length && allIds.every((id) => ids.includes(id));
+      // 全选恢复 undefined 语义：后续新增源自动纳入本会话
+      updateSessionSources(currentSessionId, isFullSelection ? undefined : ids);
+    },
+    [currentSessionId, enabledPickerSources, updateSessionSources]
+  );
+  const chatBodyWithSources = useMemo(
+    () => ({ ...chatBody, sources: activeSession?.enabledSources }),
+    [chatBody, activeSession?.enabledSources]
+  );
 
   // messagesRef 始终指向最新 messages，规避 onFinish 闭包过期问题
   const messagesRef = useRef<Message[]>([]);
@@ -93,7 +118,7 @@ export default function ChatDashboard() {
     reload,
   } = useChat({
     api: "/api/analyze",
-    body: chatBody,
+    body: chatBodyWithSources,
     headers: authHeaders(),
     onError: handleChatError,
     initialMessages,
@@ -225,6 +250,12 @@ export default function ChatDashboard() {
           showRawLang={showRawLang}
           onRendererAction={handleRendererAction}
           onReload={reload}
+        />
+
+        <SourcePicker
+          sources={enabledPickerSources}
+          selected={activeSession?.enabledSources}
+          onChange={handleSourcesChange}
         />
 
         <ChatInput
