@@ -86,10 +86,12 @@ export const FunnelChart: React.FC<FunnelChartProps> = ({
         {safeStages.map((stage, idx) => {
           const widthPercent = Math.max(Math.round((stage.value / maxValue) * 100), 12);
           const colorGradient = STAGE_COLORS[idx % STAGE_COLORS.length];
-          const prevValue = idx > 0 ? safeStages[idx - 1].value : null;
-          const dropOffRate = prevValue && prevValue > 0
-            ? Math.round(((prevValue - stage.value) / prevValue) * 100)
-            : 0;
+          // 连接线渲染在当前阶段下方，流失率应对应「当前阶段 → 下一阶段」
+          const nextValue = idx < safeStages.length - 1 ? safeStages[idx + 1].value : null;
+          const dropOffRate =
+            nextValue !== null && stage.value > 0
+              ? Math.round(((stage.value - nextValue) / stage.value) * 100)
+              : 0;
 
           return (
             <div key={`stage-${idx}`} className="space-y-1">
