@@ -4,6 +4,7 @@ import React from "react";
 import type { Message } from "@ai-sdk/react";
 import { Loader2, Sparkles, FileCode } from "lucide-react";
 import { OpenUIRenderer } from "@/components/OpenUIRenderer";
+import { extractOpenUI } from "@/lib/extractOpenUI";
 
 export interface ToolInvocationState {
   state: "call" | "result" | "partial-call";
@@ -36,15 +37,9 @@ export function MessageList({
     <div className="flex-1 overflow-y-auto p-6 space-y-6">
       {messages.map((msg, index) => {
         const rawContent = msg.content;
-        let textPart = rawContent;
-        let openuiPart = "";
 
-        // 提取 openui 代码块
-        const openuiMatch = rawContent.match(/```(?:openui)?\s*([\s\S]*?)(?:```|$)/i);
-        if (openuiMatch) {
-          openuiPart = openuiMatch[1].trim();
-          textPart = rawContent.replace(/```(?:openui)?\s*[\s\S]*?(?:```|$)/i, "").trim();
-        }
+        // 提取 openui 代码块（仅 ```openui 与裸围栏进渲染器，sql/json 等留在正文）
+        const { textPart, openuiPart } = extractOpenUI(rawContent);
 
         const isLastMessage = index === messages.length - 1;
         const isStreaming = isLastMessage && status === "streaming";
