@@ -4,6 +4,7 @@ import React, { useRef } from "react";
 import { Renderer } from "@openuidev/react-lang";
 import { analyticsLibrary } from "@/components/analytics";
 import { clientTools } from "@/lib/clientTools";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { Activity, CheckCircle2, Loader2 } from "lucide-react";
 
 interface OpenUIRendererProps {
@@ -11,37 +12,6 @@ interface OpenUIRendererProps {
   isStreaming?: boolean;
   onAction?: (actionPrompt: string) => void;
   showObservabilityBadge?: boolean;
-}
-
-class SafeErrorBoundary extends React.Component<
-  { children: React.ReactNode; fallback?: React.ReactNode },
-  { hasError: boolean; error?: Error }
-> {
-  constructor(props: { children: React.ReactNode; fallback?: React.ReactNode }) {
-    super(props);
-    this.state = { hasError: false };
-  }
-
-  static getDerivedStateFromError(error: Error) {
-    return { hasError: true, error };
-  }
-
-  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    console.warn("[OpenUIRenderer ErrorBoundary]:", error, errorInfo);
-  }
-
-  render() {
-    if (this.state.hasError) {
-      return (
-        this.props.fallback || (
-          <div className="p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 rounded-lg text-xs text-amber-800 dark:text-amber-200">
-            ⚠️ 动态仪表盘渲染解析中，请稍候...
-          </div>
-        )
-      );
-    }
-    return this.props.children;
-  }
 }
 
 /**
@@ -88,7 +58,8 @@ export const OpenUIRenderer: React.FC<OpenUIRendererProps> = ({
   if (!content || !content.trim()) return null;
 
   return (
-    <SafeErrorBoundary>
+    // resetKey=content：流式中间态解析失败后，新 token 到达时自动复位重试
+    <ErrorBoundary name="OpenUIRenderer" resetKey={content}>
       <div className="w-full space-y-3">
         {/* 流式生成进行中的 Loading 状态条 */}
         {isStreaming && (
@@ -129,6 +100,6 @@ export const OpenUIRenderer: React.FC<OpenUIRendererProps> = ({
           </div>
         )}
       </div>
-    </SafeErrorBoundary>
+    </ErrorBoundary>
   );
 };

@@ -1,6 +1,7 @@
 import { defineComponent, createLibrary } from "@openuidev/react-lang";
 import { z } from "zod";
 import React from "react";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { MetricCard } from "./MetricCard";
 import { AnalyticsChart } from "./AnalyticsChart";
 import { DataTable } from "./DataTable";
@@ -16,30 +17,13 @@ import { ContributionHeatmap } from "./ContributionHeatmap";
 import { ActionButton } from "./ActionButton";
 import { ReactiveSimulator } from "./ReactiveSimulator";
 
-class ComponentSafeWrapper extends React.Component<
-  { children: React.ReactNode; name: string },
-  { hasError: boolean }
-> {
-  constructor(props: { children: React.ReactNode; name: string }) {
-    super(props);
-    this.state = { hasError: false };
-  }
-  static getDerivedStateFromError() {
-    return { hasError: true };
-  }
-  componentDidCatch(error: Error) {
-    console.warn(`[OpenUI Local Component Guard in ${this.props.name}]:`, error?.message || error);
-  }
-  render() {
-    if (this.state.hasError) {
-      return (
-        <div className="p-3 bg-amber-50/50 dark:bg-amber-950/20 border border-amber-200/60 dark:border-amber-900/40 rounded-xl text-xs text-amber-700 dark:text-amber-400">
-          ⚠️ 动态组件「{this.props.name}」正在加载或数据格式解析中...
-        </div>
-      );
-    }
-    return this.props.children;
-  }
+/**
+ * 组件级渲染守卫：单个组件数据异常不拖垮整个看板。
+ * 统一走共享 ErrorBoundary（如实报错文案；组件 props 不变时保持错误态，
+ * 不做自动复位——相同 props 重试必然再次失败，复位只会造成渲染循环）。
+ */
+function ComponentSafeWrapper({ children, name }: { children: React.ReactNode; name: string }) {
+  return <ErrorBoundary name={name}>{children}</ErrorBoundary>;
 }
 
 // 1. Root 根容器定义
