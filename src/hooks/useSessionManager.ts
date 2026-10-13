@@ -63,40 +63,45 @@ export function useSessionManager(
     if (currentSessionId) setActiveSessionId(currentSessionId);
   }, [currentSessionId]);
 
-  // 保存消息列表到当前活跃会话（持久化由上方 effect 统一负责）
-  const saveCurrentSessionMessages = useCallback((newMessages: Message[]) => {
-    const activeId = currentSessionIdRef.current;
-    if (!activeId || newMessages.length === 0) return;
+  // 保存消息列表到指定会话（缺省为当前活跃会话）。
+  // 流式期间用户可能已切换会话，调用方应传入发起请求时的 sessionId，
+  // 避免把 A 会话的内容写进 B 会话。
+  const saveCurrentSessionMessages = useCallback(
+    (newMessages: Message[], targetSessionId?: string) => {
+      const activeId = targetSessionId ?? currentSessionIdRef.current;
+      if (!activeId || newMessages.length === 0) return;
 
-    setSessions((prevSessions) => {
-      const sessionIndex = prevSessions.findIndex((s) => s.id === activeId);
-      if (sessionIndex === -1) return prevSessions;
+      setSessions((prevSessions) => {
+        const sessionIndex = prevSessions.findIndex((s) => s.id === activeId);
+        if (sessionIndex === -1) return prevSessions;
 
-      const current = prevSessions[sessionIndex];
-      let title = current.title;
-      const firstUserMessage = newMessages.find((m) => m.role === "user");
-      if (
-        (title === "新建分析会话" ||
-          title === "营销获客与商业分析会话" ||
-          title === "新分析会话") &&
-        firstUserMessage
-      ) {
-        title = generateSessionTitle(firstUserMessage.content);
-      }
+        const current = prevSessions[sessionIndex];
+        let title = current.title;
+        const firstUserMessage = newMessages.find((m) => m.role === "user");
+        if (
+          (title === "新建分析会话" ||
+            title === "营销获客与商业分析会话" ||
+            title === "新分析会话") &&
+          firstUserMessage
+        ) {
+          title = generateSessionTitle(firstUserMessage.content);
+        }
 
-      const updatedSession: ChatSession = {
-        ...current,
-        title,
-        updatedAt: Date.now(),
-        messages: newMessages,
-      };
+        const updatedSession: ChatSession = {
+          ...current,
+          title,
+          updatedAt: Date.now(),
+          messages: newMessages,
+        };
 
-      const nextSessions = [...prevSessions];
-      nextSessions[sessionIndex] = updatedSession;
-      nextSessions.sort((a, b) => b.updatedAt - a.updatedAt);
-      return nextSessions;
-    });
-  }, []);
+        const nextSessions = [...prevSessions];
+        nextSessions[sessionIndex] = updatedSession;
+        nextSessions.sort((a, b) => b.updatedAt - a.updatedAt);
+        return nextSessions;
+      });
+    },
+    []
+  );
 
   // 计算初始会话消息
   const initialMessages = useMemo(() => {

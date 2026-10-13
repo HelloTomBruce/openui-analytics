@@ -118,6 +118,31 @@ describe("useSessionManager 持久化行为", () => {
     expect(getSavedSessions().some((s) => s.id === newId)).toBe(false);
   });
 
+  it("流式期间切换会话：指定 sessionId 保存时写回发起会话而非当前会话", () => {
+    const { result } = renderHook(() => useSessionManager(makeRef()));
+    const originId = result.current.currentSessionId;
+
+    // 新建并切换到会话 B（模拟流式期间用户切换会话）
+    act(() => {
+      result.current.handleCreateNewChat();
+    });
+    const otherId = result.current.currentSessionId;
+    expect(otherId).not.toBe(originId);
+
+    // 传入发起时的 sessionId 保存
+    act(() => {
+      result.current.saveCurrentSessionMessages([userMessage], originId);
+    });
+
+    const persisted = getSavedSessions();
+    const origin = persisted.find((s) => s.id === originId);
+    const other = persisted.find((s) => s.id === otherId);
+    expect(origin?.messages).toHaveLength(1);
+    expect(origin?.messages[0].content).toBe("分析一下上月营收");
+    // 当前活跃会话不被污染
+    expect(other?.messages ?? []).not.toContainEqual(userMessage);
+  });
+
   it("重命名会话后落盘", () => {
     const { result } = renderHook(() => useSessionManager(makeRef()));
     const id = result.current.sessions[0].id;

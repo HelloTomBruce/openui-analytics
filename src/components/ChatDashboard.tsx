@@ -2,8 +2,10 @@
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useChat } from "@ai-sdk/react";
+import type { Message } from "@ai-sdk/react";
 import { TrendingUp, Plus, Code2, Settings, RefreshCw } from "lucide-react";
 import { DEFAULT_SANDBOX_CODE } from "@/lib/presetQueries";
+import { upsertMessage } from "@/lib/messages";
 import { useLlmSettings } from "@/hooks/useLlmSettings";
 import { useSessionManager, type SetMessagesFn } from "@/hooks/useSessionManager";
 import { ChatSidebar } from "@/components/chat/ChatSidebar";
@@ -42,6 +44,8 @@ export default function ChatDashboard() {
   // useChat 的 initialMessages 由 useSessionManager 提供，而会话切换又需要
   // useChat 的 setMessages —— 通过 ref 延迟注入打破构造顺序环（见 hook 注释）。
   const setMessagesRef = useRef<SetMessagesFn | null>(null);
+  // 发起请求时的会话 id：流式期间用户可能切换会话，onFinish 须写回发起会话
+  const streamingSessionIdRef = useRef<string | null>(null);
 
   const {
     sessions,
@@ -65,6 +69,9 @@ export default function ChatDashboard() {
     console.error("Chat error:", err);
   }, []);
 
+  // messagesRef 始终指向最新 messages，规避 onFinish 闭包过期问题
+  const messagesRef = useRef<Message[]>([]);
+
   // 使用 Next.js 官方 Vercel AI SDK 的 useChat Hook
   const {
     messages,
@@ -83,20 +90,39 @@ export default function ChatDashboard() {
     onError: handleChatError,
     initialMessages,
     onFinish: (message) => {
-      // 流式结束时保存
-      saveCurrentSessionMessages([...messages, message]);
+      // 流式结束时保存：用 messagesRef 读取最新列表（含多步工具调用的中间消息），
+      // upsert 防止与 AI SDK 已合入的最终消息重复；写回发起请求时的会话。
+      saveCurrentSessionMessages(
+        upsertMessage(messagesRef.current, message),
+        streamingSessionIdRef.current ?? undefined
+      );
     },
   });
+
+  // messagesRef 同步（声明在 useChat 之前，此处 messages 已就位）
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
 
   useEffect(() => {
     setMessagesRef.current = setMessages;
   }, [setMessages]);
 
+  // 提交/追加消息时记录发起会话，供 onFinish 定向保存
+  const handleChatSubmit = useCallback(
+    (e?: React.FormEvent<HTMLFormElement>) => {
+      streamingSessionIdRef.current = currentSessionId;
+      handleSubmit(e);
+    },
+    [handleSubmit, currentSessionId]
+  );
+
   const handleRendererAction = useCallback(
     (actionPrompt: string) => {
+      streamingSessionIdRef.current = currentSessionId;
       append({ role: "user", content: actionPrompt });
     },
-    [append]
+    [append, currentSessionId]
   );
 
   const handleDevToolsAction = useCallback((msg: string) => {
@@ -190,7 +216,7 @@ export default function ChatDashboard() {
           input={input}
           isLoading={isLoading}
           onChange={handleInputChange}
-          onSubmit={handleSubmit}
+          onSubmit={handleChatSubmit}
         />
       </main>
 
