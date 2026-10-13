@@ -224,7 +224,7 @@
 
 ## Phase 6: 打磨
 
-### Task 23: Toast 组件 + UI 修正包（Nits 合批）
+### Task 23: Toast 组件 + UI 修正包（Nits 合批） ✅
 **Description:** 已决策：alert 全部替换为自实现轻量 toast。先实现 `lib/toast.ts`（模块级 pub/sub store，非 React 可直发）+ `components/Toaster.tsx`（挂载于 ChatDashboard，自动消隐）；clientTools 三处 alert、DevToolsPanel 的 alert 全部迁移。随后 Nits 合批：GaugeProgress 无效上限清理；MetricCard object 兜底改 "-"；SessionListItem 负时间钳制；ContributionHeatmap tooltip 裁剪修复；ReactiveSimulator 滑块上限与校验一致（200000 vs 100万）+ 客单价可配；ChatSidebar 恰剩 1 条时也可清空；InsightBanner dismissed 持久化 + handleRefresh unmount 保护；ChatSidebar `key={idx}` 改稳定 key。
 **Acceptance criteria:**
 - [ ] 全项目无 alert() 残留（grep 验证）
@@ -234,6 +234,6 @@
 **Files:** 新增 `src/lib/toast.ts` + `src/components/Toaster.tsx`、`src/lib/clientTools.ts`、`src/components/chat/DevToolsPanel.tsx`、对应各组件文件
 **Size:** M
 
-## Final Checkpoint
-- [ ] lint / typecheck / test / build 全绿
-- [ ] 评审报告每条发现均有 commit 或 Won't-fix 说明
+## Final Checkpoint ✅
+- [x] lint / typecheck / test / build 全绿（109/109）
+- [x] 评审报告每条发现均有 commit 或 Won't-fix 说明（T8：入口已 ssr:false）
