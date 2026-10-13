@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { GET } from "./route";
-import { listDataSources, checkDataSourceHealth } from "@/mcp/registry";
+import { checkDataSourceHealth } from "@/mcp/registry";
 
 vi.mock("@/mcp/registry", () => ({
   listDataSources: vi.fn(() => [
