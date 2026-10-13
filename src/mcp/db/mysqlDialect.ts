@@ -41,8 +41,9 @@ export const mysqlDialect: DbDialect = {
   },
 
   async listTables(client) {
+    // table 是 MySQL 保留字，别名必须反引号转义（PostgreSQL 非保留可裸用）
     const res = await client.query(
-      `SELECT table_name AS table
+      `SELECT table_name AS \`table\`
        FROM information_schema.tables
        WHERE table_schema = DATABASE()
        ORDER BY table_name`
@@ -51,8 +52,9 @@ export const mysqlDialect: DbDialect = {
   },
 
   async describeTable(client, table) {
+    // column 同为保留字；type 一并转义保持统一
     const res = await client.query(
-      `SELECT column_name AS column, data_type AS type
+      `SELECT column_name AS \`column\`, data_type AS \`type\`
        FROM information_schema.columns
        WHERE table_schema = DATABASE() AND table_name = ?
        ORDER BY ordinal_position`,

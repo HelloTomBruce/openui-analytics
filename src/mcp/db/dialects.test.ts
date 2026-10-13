@@ -24,8 +24,14 @@ vi.mock("pg", () => ({
   }),
 }));
 
-// mysql2：记录 query(sql, params) 的参数透传
-const mysqlPoolQuery = vi.fn(async () => [[{ table: "orders" }]]);
+// mysql2：记录 query(sql, params) 的参数透传（泛型签名供 mock.calls 取参，实现零参数）
+type MysqlPoolQuery = (
+  sql: string,
+  params?: unknown[]
+) => Promise<unknown[]>;
+const mysqlPoolQuery = vi.fn<MysqlPoolQuery>(
+  async () => [[{ table: "orders" }]] as unknown[]
+);
 
 vi.mock("mysql2/promise", () => ({
   createPool: vi.fn(() => ({
@@ -71,6 +77,15 @@ describe("mysqlDialect 连接层（真实 pool 语义守护）", () => {
     vi.clearAllMocks();
   });
 
+  it("listTables 的 SQL 用反引号转义保留字别名", async () => {
+    const conn = await mysqlDialect.connect("mysql://u:p@h:3306/db");
+    await mysqlDialect.listTables(conn);
+
+    expect(mysqlPoolQuery).toHaveBeenCalledWith(
+      expect.stringContaining("AS `table`")
+    );
+  });
+
   it("describeTable 的 ? 占位符参数被透传给 pool.query", async () => {
     const conn = await mysqlDialect.connect("mysql://u:p@h:3306/db");
     await mysqlDialect.describeTable(conn, "orders");
@@ -79,6 +94,15 @@ describe("mysqlDialect 连接层（真实 pool 语义守护）", () => {
       expect.stringContaining("table_name = ?"),
       ["orders"]
     );
+  });
+
+  it("describeTable 的保留字别名同样反引号转义", async () => {
+    const conn = await mysqlDialect.connect("mysql://u:p@h:3306/db");
+    await mysqlDialect.describeTable(conn, "orders");
+
+    const sql = String(mysqlPoolQuery.mock.calls[0]?.[0]);
+    expect(sql).toContain("AS `column`");
+    expect(sql).toContain("AS `type`");
   });
 
   it("ping 走 SELECT 1", async () => {
