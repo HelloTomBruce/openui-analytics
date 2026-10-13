@@ -384,36 +384,42 @@ export function maskUrl(url: string): string {
   }
 }
 
+/**
+ * 动态源配置 → 脱敏描述符（POST/PATCH 响应与列表共用，避免两处映射漂移）。
+ */
+export function describeDynamicSource(
+  config: DynamicSourceConfig
+): DataSourceDescriptor {
+  return config.kind === "http-mcp"
+    ? {
+        id: config.id,
+        name: config.name,
+        kind: "http-mcp" as const,
+        tools: [],
+        enabled: config.enabled,
+        builtin: false,
+        hasToken: Boolean(config.token),
+        maskedUrl: maskUrl(config.url),
+      }
+    : {
+        id: config.id,
+        name: config.name,
+        kind: "db" as const,
+        tools: [...DB_SOURCE_TOOLS],
+        enabled: config.enabled,
+        builtin: false,
+        dbType: config.dbType,
+        maskedConnectionString: maskConnectionString(config.connectionString),
+      };
+}
+
 export function listDataSources(): DataSourceDescriptor[] {
   const cfg = readDatasourcesConfig();
   const builtins: DataSourceDescriptor[] = BUILTIN_SOURCES.map((s) => ({
     ...s,
     enabled: cfg.builtin[s.id].enabled,
   }));
-  const dynamic: DataSourceDescriptor[] = cfg.sources.map((s) =>
-    s.kind === "http-mcp"
-      ? {
-          id: s.id,
-          name: s.name,
-          kind: "http-mcp" as const,
-          tools: [],
-          enabled: s.enabled,
-          builtin: false,
-          hasToken: Boolean(s.token),
-          maskedUrl: maskUrl(s.url),
-        }
-      : {
-          id: s.id,
-          name: s.name,
-          kind: "db" as const,
-          tools: [...DB_SOURCE_TOOLS],
-          enabled: s.enabled,
-          builtin: false,
-          dbType: s.dbType,
-          maskedConnectionString: maskConnectionString(s.connectionString),
-        }
-  );
-  return [...builtins, ...dynamic];
+  return [...builtins, ...cfg.sources.map(describeDynamicSource)];
 }
 
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
