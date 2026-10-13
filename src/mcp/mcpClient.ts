@@ -6,7 +6,9 @@ import { tool, jsonSchema, type CoreTool } from "ai";
 import { createPostgresMcpServer } from "./postgresMcpServer";
 
 let cachedClient: Client | null = null;
-let cachedGitLabClient: Client | null = null;
+// GitLab 客户端按「endpoint+token」键控缓存：用户在设置页修改配置后
+// 必须立即生效（键变化时关闭旧连接重建），且不同配置之间绝不串用连接。
+let cachedGitLabEntry: { key: string; client: Client } | null = null;
 
 /**
  * 获取或创建已连接的 PostgreSQL MCP Client
@@ -101,7 +103,19 @@ export async function getGitLabMcpClient(
   endpoint = process.env.GITLAB_MCP_URL || "http://127.0.0.1:5002/mcp",
   token = process.env.GITLAB_TOKEN || process.env.GITLAB_API_KEY || ""
 ): Promise<Client> {
-  if (cachedGitLabClient) return cachedGitLabClient;
+  const cacheKey = `${endpoint}::${token}`;
+  if (cachedGitLabEntry?.key === cacheKey) return cachedGitLabEntry.client;
+
+  // 配置已变化：先关闭旧连接，避免泄漏与跨配置串用
+  if (cachedGitLabEntry) {
+    const stale = cachedGitLabEntry.client;
+    cachedGitLabEntry = null;
+    try {
+      await stale.close();
+    } catch {
+      // 旧连接关闭失败不阻断新连接建立
+    }
+  }
 
   const client = new Client(
     {
@@ -127,7 +141,7 @@ export async function getGitLabMcpClient(
       },
     });
     await client.connect(transport);
-    cachedGitLabClient = client;
+    cachedGitLabEntry = { key: cacheKey, client };
     return client;
   } catch {
     // 降级尝试标准 SSE Transport
@@ -137,7 +151,7 @@ export async function getGitLabMcpClient(
       },
     });
     await client.connect(sseTransport);
-    cachedGitLabClient = client;
+    cachedGitLabEntry = { key: cacheKey, client };
     return client;
   }
 }

@@ -27,7 +27,10 @@ export function useSessionManager(
   setMessagesRef: React.RefObject<SetMessagesFn | null>
 ) {
   // 会话列表与活跃会话一次性协同初始化，保证两者一致
-  // （持久化副作用已下沉到下方 useEffect 单点完成）
+  // （持久化副作用已下沉到下方 useEffect 单点完成）。
+  // 注：本 hook 依赖 localStorage 惰性初始化，前提是入口 page.tsx 以
+  // dynamic(ssr:false) 挂载 ChatDashboard，组件不参与 SSR，故无水合不一致；
+  // 若未来改为 SSR 挂载，需改为「默认值 + mounted 后载入」模式。
   const [initialState] = useState(() => {
     if (typeof window !== "undefined") {
       const saved = getSavedSessions();

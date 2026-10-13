@@ -78,14 +78,8 @@
 **Files:** `src/components/analytics/FunnelChart.tsx`
 **Size:** XS
 
-### Task 8: localStorage 状态水合修复
-**Description:** `typeof window` 惰性初始化导致服务端渲染空、客户端水合出 localStorage 值，hydration mismatch。改为服务端安全默认值 + mounted 后 useEffect 载入（或 useSyncExternalStore）。
-**Acceptance criteria:**
-- [ ] 首次加载 console 无 hydration 告警（恢复后的守护用例验证）
-- [ ] 刷新后会话列表/设置仍正确恢复
-**Dependencies:** T2, T4（同文件）
-**Files:** `src/hooks/useSessionManager.ts`、`src/hooks/useLlmSettings.ts`
-**Size:** M
+### Task 8: localStorage 状态水合修复 — Won't-fix（已缓解）
+**结论**：`src/app/page.tsx` 已用 `dynamic(..., { ssr: false })` 挂载 ChatDashboard，组件不参与服务端预渲染，不存在水合对比面。已在 useSessionManager 加注；若未来移除 ssr:false 需重做为「默认值 + mounted 后载入」模式。
 
 ## Checkpoint 2：测试全绿 + 手工验证会话 CRUD 刷新一致性、SQL 代码块纯文本展示
 
