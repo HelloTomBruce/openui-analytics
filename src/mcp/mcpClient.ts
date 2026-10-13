@@ -1,9 +1,8 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { tool, jsonSchema, type CoreTool } from "ai";
 import { createPostgresMcpServer } from "./postgresMcpServer";
+import { connectHttpMcp } from "./httpMcp";
 import { parseMcpToolResult } from "./parseToolResult";
 
 let cachedClient: Client | null = null;
@@ -98,43 +97,16 @@ export async function getGitLabMcpClient(
     }
   }
 
-  const client = new Client(
-    {
-      name: "openui-gitlab-client",
-      version: "1.0.0",
-    },
-    {
-      capabilities: {},
-    }
-  );
-
   const headers: Record<string, string> = {};
   if (token) {
     headers["Private-Token"] = token;
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  try {
-    // 优先采用 Streamable HTTP Transport
-    const transport = new StreamableHTTPClientTransport(new URL(endpoint), {
-      requestInit: {
-        headers,
-      },
-    });
-    await client.connect(transport);
-    cachedGitLabEntry = { key: cacheKey, client };
-    return client;
-  } catch {
-    // 降级尝试标准 SSE Transport
-    const sseTransport = new SSEClientTransport(new URL(endpoint), {
-      requestInit: {
-        headers,
-      },
-    });
-    await client.connect(sseTransport);
-    cachedGitLabEntry = { key: cacheKey, client };
-    return client;
-  }
+  // 连接与降级策略（StreamableHTTP → SSE）委托通用连接器；失败不缓存，抛原始错误
+  const client = await connectHttpMcp("openui-gitlab-client", endpoint, headers);
+  cachedGitLabEntry = { key: cacheKey, client };
+  return client;
 }
 
 /**
