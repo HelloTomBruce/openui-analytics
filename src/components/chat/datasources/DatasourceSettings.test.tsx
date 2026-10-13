@@ -77,14 +77,7 @@ function mockGetAll() {
 }
 
 function renderSettings() {
-  return render(
-    <DatasourceSettings
-      gitlabUrl="http://127.0.0.1:5002/mcp"
-      gitlabToken="glpat-old"
-      onGitlabUrlChange={vi.fn()}
-      onGitlabTokenChange={vi.fn()}
-    />
-  );
+  return render(<DatasourceSettings />);
 }
 
 async function openCreateForm() {
@@ -119,16 +112,6 @@ describe("DatasourceSettings", () => {
     
   });
 
-  it("内置 gitlab-mcp 行可展开透传配置（Endpoint 与 Token）", async () => {
-    renderSettings();
-
-    expect(await screen.findByText("GitLab MCP (外部)")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /配置 gitlab-mcp/ }));
-    expect(screen.getByLabelText(/GitLab MCP Endpoint/)).toHaveValue(
-      "http://127.0.0.1:5002/mcp"
-    );
-  });
-
   it("添加数据源：切到 db 类型出现连接串字段，提交 POST 携带完整 body", async () => {
     renderSettings();
     await openCreateForm();
@@ -157,6 +140,36 @@ describe("DatasourceSettings", () => {
         kind: "db",
         dbType: "postgres",
         connectionString: "postgres://u:p@h:5432/reports",
+      });
+    });
+  });
+
+  it("添加 stdio 源：本地 CLI 表单提交命令与空格解析后的参数", async () => {
+    renderSettings();
+    await openCreateForm();
+
+    fireEvent.change(screen.getByLabelText(/ID/), { target: { value: "zc" } });
+    fireEvent.change(screen.getByLabelText(/名称/), { target: { value: "禅道" } });
+    fireEvent.click(screen.getByLabelText(/本地 CLI/));
+    await screen.findByLabelText(/命令/);
+    fireEvent.change(screen.getByLabelText(/命令/), { target: { value: "zentao" } });
+    fireEvent.change(screen.getByLabelText(/参数/), {
+      target: { value: "mcp  --read-only " },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /保存/ }));
+
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find(
+        (c) => String(c[0]) === "/api/datasources" && c[1]?.method === "POST"
+      );
+      expect(call).toBeTruthy();
+      const body = JSON.parse(call![1].body as string);
+      expect(body).toMatchObject({
+        id: "zc",
+        name: "禅道",
+        kind: "stdio-cli",
+        command: "zentao",
+        args: ["mcp", "--read-only"],
       });
     });
   });

@@ -23,16 +23,12 @@ interface MessageItemProps {
   onRendererAction: (actionPrompt: string) => void;
 }
 
-/** 工具调用徽标：内置三源固定标签，动态源按 <id>_ 前缀归因到源名称 */
+/** 工具调用徽标：按 <id>_ 前缀归因到源名称，未匹配走通用兜底 */
 function toolBadgeText(
   toolName: string,
   args: Record<string, unknown> | undefined,
   activeSources?: { id: string; name: string }[]
 ): string {
-  if (toolName === "execute_sql")
-    return `⚡ [PostgreSQL MCP] 执行 SQL: ${args?.sql || ""}`;
-  if (toolName.startsWith("zentao_")) return `⚡ [ZenTao 禅道] 调用: ${toolName}`;
-  if (toolName.startsWith("gitlab_")) return `⚡ [GitLab MCP] 调用: ${toolName}`;
   const dyn = activeSources?.find((s) => toolName.startsWith(`${s.id}_`));
   if (dyn) {
     return toolName.endsWith("execute_sql")

@@ -15,12 +15,6 @@ function datasourceHeaders(): Record<string, string> {
     "Content-Type": "application/json",
     ...authHeaders(),
   };
-  if (typeof window !== "undefined") {
-    const gitlabUrl = localStorage.getItem("openui_gitlab_url");
-    const gitlabToken = localStorage.getItem("openui_gitlab_token");
-    if (gitlabUrl) headers["x-gitlab-url"] = gitlabUrl;
-    if (gitlabToken) headers["x-gitlab-token"] = gitlabToken;
-  }
   return headers;
 }
 

@@ -1,19 +1,11 @@
 "use client";
 
 import React, { useState } from "react";
-import { Database, Key, Pencil, Plus, Power, Trash2 } from "lucide-react";
+import { Database, Pencil, Plus, Power, Trash2 } from "lucide-react";
 import type { DataSourceDescriptor } from "@/mcp/registry";
 import { useDatasources } from "./useDatasources";
 
-interface DatasourceSettingsProps {
-  /** 内置 GitLab 源的透传配置（保持原「页面设置 → localStorage → 请求头」行为） */
-  gitlabUrl: string;
-  gitlabToken: string;
-  onGitlabUrlChange: (v: string) => void;
-  onGitlabTokenChange: (v: string) => void;
-}
-
-type SourceKind = "http-mcp" | "db";
+type SourceKind = "http-mcp" | "db" | "stdio-cli";
 
 interface FormState {
   mode: "create" | "edit";
@@ -28,6 +20,9 @@ interface FormState {
   /** 编辑模式下展示脱敏预览（真实凭证永不回填表单） */
   urlPreview: string;
   connPreview: string;
+  command: string;
+  /** 空格分隔的参数原文，提交时解析为数组 */
+  argsRaw: string;
 }
 
 const CLOSED_FORM: null = null;
@@ -47,17 +42,11 @@ function badgeClass(source: DataSourceDescriptor): string {
   return "bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300";
 }
 
-export function DatasourceSettings({
-  gitlabUrl,
-  gitlabToken,
-  onGitlabUrlChange,
-  onGitlabTokenChange,
-}: DatasourceSettingsProps) {
+export function DatasourceSettings() {
   const { sources, health, loading, createSource, updateSource, removeSource } =
     useDatasources();
   const [form, setForm] = useState<FormState | typeof CLOSED_FORM>(CLOSED_FORM);
   const [errors, setErrors] = useState<string[]>([]);
-  const [gitlabExpanded, setGitlabExpanded] = useState(false);
 
   const openCreate = () => {
     setErrors([]);
@@ -73,6 +62,8 @@ export function DatasourceSettings({
       hasExistingToken: false,
       urlPreview: "",
       connPreview: "",
+      command: "",
+      argsRaw: "",
     });
   };
 
@@ -91,6 +82,8 @@ export function DatasourceSettings({
       // 脱敏值仅作 placeholder 展示；若回填表单并在提交时发送，会把 *** 写成真实凭证
       urlPreview: s.kind === "http-mcp" ? (s.maskedUrl ?? "") : "",
       connPreview: s.kind === "db" ? (s.maskedConnectionString ?? "") : "",
+      command: s.kind === "stdio-cli" ? (s.command ?? "") : "",
+      argsRaw: "",
     });
   };
 
@@ -110,9 +103,12 @@ export function DatasourceSettings({
       if (form.kind === "http-mcp") {
         body.url = form.url.trim();
         if (form.token.trim()) body.token = form.token.trim();
-      } else {
+      } else if (form.kind === "db") {
         body.dbType = form.dbType;
         body.connectionString = form.connectionString.trim();
+      } else {
+        body.command = form.command.trim();
+        body.args = form.argsRaw.split(/\s+/).filter(Boolean);
       }
       const result = await createSource(body);
       if (result.ok) closeForm();
@@ -124,9 +120,13 @@ export function DatasourceSettings({
     if (form.kind === "http-mcp") {
       if (form.url.trim()) patch.url = form.url.trim();
       if (form.token.trim()) patch.token = form.token.trim();
-    } else {
+    } else if (form.kind === "db") {
       if (form.connectionString.trim())
         patch.connectionString = form.connectionString.trim();
+    } else {
+      // stdio：命令非机密总是提交；参数留空 = 不更新
+      patch.command = form.command.trim();
+      if (form.argsRaw.trim()) patch.args = form.argsRaw.split(/\s+/).filter(Boolean);
     }
     const result = await updateSource(form.id, patch);
     if (result.ok) closeForm();
@@ -192,16 +192,6 @@ export function DatasourceSettings({
                 >
                   <Power className="w-3.5 h-3.5" />
                 </button>
-                {s.id === "gitlab-mcp" && (
-                  <button
-                    onClick={() => setGitlabExpanded((v) => !v)}
-                    aria-label="配置 gitlab-mcp"
-                    className="p-1 rounded text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800"
-                    title="展开 GitLab 连接配置"
-                  >
-                    <Key className="w-3.5 h-3.5" />
-                  </button>
-                )}
                 {(
                   <>
                     <button
@@ -224,37 +214,6 @@ export function DatasourceSettings({
                 )}
               </div>
 
-              {/* 内置 GitLab 透传配置（localStorage，保持原有行为） */}
-              {s.id === "gitlab-mcp" && gitlabExpanded && (
-                <div className="space-y-2 pt-2 border-t border-slate-100 dark:border-slate-800">
-                  <div>
-                    <label htmlFor="builtin-gitlab-url" className={labelClass}>
-                      GitLab MCP Endpoint
-                    </label>
-                    <input
-                      id="builtin-gitlab-url"
-                      type="text"
-                      value={gitlabUrl}
-                      onChange={(e) => onGitlabUrlChange(e.target.value)}
-                      placeholder="http://127.0.0.1:5002/mcp"
-                      className={inputClass}
-                    />
-                  </div>
-                  <div>
-                    <label htmlFor="builtin-gitlab-token" className={labelClass}>
-                      GitLab Private Token / Access Token
-                    </label>
-                    <input
-                      id="builtin-gitlab-token"
-                      type="password"
-                      value={gitlabToken}
-                      onChange={(e) => onGitlabTokenChange(e.target.value)}
-                      placeholder="glpat-..."
-                      className={inputClass}
-                    />
-                  </div>
-                </div>
-              )}
             </div>
           );
         })}
@@ -301,6 +260,18 @@ export function DatasourceSettings({
                     onChange={() => setForm({ ...form, kind: "db" })}
                   />
                   <span>数据库连接</span>
+                </label>
+              </div>
+              <div>
+                <label htmlFor="ds-kind-stdio" className="flex items-center gap-1.5 cursor-pointer">
+                  <input
+                    id="ds-kind-stdio"
+                    type="radio"
+                    name="ds-kind"
+                    checked={form.kind === "stdio-cli"}
+                    onChange={() => setForm({ ...form, kind: "stdio-cli" })}
+                  />
+                  <span>本地 CLI</span>
                 </label>
               </div>
             </div>
@@ -416,6 +387,37 @@ export function DatasourceSettings({
               <div className="text-[10px] text-slate-400 flex items-center gap-1">
                 <Database className="w-3 h-3" />
                 <span>数据库源仅允许只读 SELECT，自动行数封顶与超时保护</span>
+              </div>
+            </>
+          )}
+
+          {form.kind === "stdio-cli" && (
+            <>
+              <div>
+                <label htmlFor="ds-command" className={labelClass}>
+                  命令
+                </label>
+                <input
+                  id="ds-command"
+                  type="text"
+                  value={form.command}
+                  onChange={(e) => setForm({ ...form, command: e.target.value })}
+                  placeholder="zentao"
+                  className={inputClass}
+                />
+              </div>
+              <div>
+                <label htmlFor="ds-args" className={labelClass}>
+                  参数（空格分隔，编辑留空表示不变）
+                </label>
+                <input
+                  id="ds-args"
+                  type="text"
+                  value={form.argsRaw}
+                  onChange={(e) => setForm({ ...form, argsRaw: e.target.value })}
+                  placeholder="mcp --read-only"
+                  className={inputClass}
+                />
               </div>
             </>
           )}

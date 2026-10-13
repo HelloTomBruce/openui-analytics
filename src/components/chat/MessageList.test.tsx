@@ -39,19 +39,19 @@ describe("MessageList 流式重渲染治理", () => {
     vi.clearAllMocks();
   });
 
-  it("动态源前缀工具归因到源名称，内置匹配不受影响", () => {
+  it("动态源前缀工具归因到源名称，未匹配走通用兜底", () => {
     render(
       <MessageList
         messages={withTools([
           { toolName: "zhaobiao_list_tables" },
           { toolName: "execute_sql", args: { sql: "SELECT 1" } },
+          { toolName: "zhaobiao_execute_sql", args: { sql: "SELECT 2" } },
         ])}
         status="ready"
         error={undefined}
         showRawLang={false}
         activeSources={[
           { id: "zhaobiao", name: "招标平台数据/" },
-          { id: "postgres", name: "PostgreSQL 分析库" },
         ]}
         onRendererAction={vi.fn()}
         onReload={vi.fn()}
@@ -59,7 +59,9 @@ describe("MessageList 流式重渲染治理", () => {
     );
 
     expect(screen.getByText(/\[招标平台数据\/\] 调用: zhaobiao_list_tables/)).toBeInTheDocument();
-    expect(screen.getByText(/\[PostgreSQL MCP\] 执行 SQL: SELECT 1/)).toBeInTheDocument();
+    // 无前缀匹配走通用兜底；同契约动态源按前缀归因
+    expect(screen.getByText(/\[MCP Tool\] 调用: execute_sql/)).toBeInTheDocument();
+    expect(screen.getByText(/\[招标平台数据\/\] 执行 SQL: SELECT 2/)).toBeInTheDocument();
   });
 
   it("加载提示反映会话启用源，未提供时回落通用文案", () => {

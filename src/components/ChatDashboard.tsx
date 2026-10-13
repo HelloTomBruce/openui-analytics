@@ -15,7 +15,6 @@ import { SourcePicker } from "@/components/chat/SourcePicker";
 import { useDatasourceList } from "@/components/chat/datasources/useDatasources";
 import { SettingsModal } from "@/components/chat/SettingsModal";
 import { DevToolsPanel } from "@/components/chat/DevToolsPanel";
-import { InsightBanner } from "@/components/chat/InsightBanner";
 import { Toaster } from "@/components/Toaster";
 import { toast } from "@/lib/toast";
 
@@ -37,10 +36,6 @@ export default function ChatDashboard() {
     setBaseURL,
     model,
     setModel,
-    gitlabToken,
-    setGitlabToken,
-    gitlabUrl,
-    setGitlabUrl,
     accessToken,
     setAccessToken,
     temperature,
@@ -249,8 +244,6 @@ export default function ChatDashboard() {
           </div>
         </header>
 
-        <InsightBanner onAnalyze={handleRendererAction} />
-
         <MessageList
           messages={messages}
           status={status}
@@ -289,15 +282,11 @@ export default function ChatDashboard() {
           apiKey={apiKey}
           baseURL={baseURL}
           model={model}
-          gitlabToken={gitlabToken}
-          gitlabUrl={gitlabUrl}
           accessToken={accessToken}
           temperature={temperature}
           onApiKeyChange={setApiKey}
           onBaseURLChange={setBaseURL}
           onModelChange={setModel}
-          onGitlabTokenChange={setGitlabToken}
-          onGitlabUrlChange={setGitlabUrl}
           onAccessTokenChange={setAccessToken}
           onTemperatureChange={setTemperature}
           onSave={saveSettings}

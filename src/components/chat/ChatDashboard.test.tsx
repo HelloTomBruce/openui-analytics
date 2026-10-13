@@ -67,6 +67,8 @@ describe("ChatDashboard 守护测试（重构行为锁定）", () => {
       body?: { sources?: string[] };
     };
     expect(config?.body?.sources).toEqual(["postgres"]);
+    expect(config?.body).not.toHaveProperty("gitlabUrl");
+    expect(config?.body).not.toHaveProperty("gitlabToken");
   });
 
   it("首次渲染无 React 错误 / hydration 告警", () => {

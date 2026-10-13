@@ -8,15 +8,11 @@ interface SettingsModalProps {
   apiKey: string;
   baseURL: string;
   model: string;
-  gitlabToken: string;
-  gitlabUrl: string;
   accessToken: string;
   temperature: string;
   onApiKeyChange: (v: string) => void;
   onBaseURLChange: (v: string) => void;
   onModelChange: (v: string) => void;
-  onGitlabTokenChange: (v: string) => void;
-  onGitlabUrlChange: (v: string) => void;
   onAccessTokenChange: (v: string) => void;
   onTemperatureChange: (v: string) => void;
   onSave: () => void;
@@ -34,15 +30,11 @@ export function SettingsModal({
   apiKey,
   baseURL,
   model,
-  gitlabToken,
-  gitlabUrl,
   accessToken,
   temperature,
   onApiKeyChange,
   onBaseURLChange,
   onModelChange,
-  onGitlabTokenChange,
-  onGitlabUrlChange,
   onAccessTokenChange,
   onTemperatureChange,
   onSave,
@@ -203,12 +195,7 @@ export function SettingsModal({
             aria-labelledby="settings-tab-datasources"
             className="max-h-[60vh] overflow-y-auto pr-0.5"
           >
-            <DatasourceSettings
-              gitlabUrl={gitlabUrl}
-              gitlabToken={gitlabToken}
-              onGitlabUrlChange={onGitlabUrlChange}
-              onGitlabTokenChange={onGitlabTokenChange}
-            />
+            <DatasourceSettings />
           </div>
         )}
 
