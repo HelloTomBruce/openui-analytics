@@ -2,6 +2,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { tool, jsonSchema, type CoreTool } from "ai";
 import { connectHttpMcp } from "./httpMcp";
+import { connectStdioMcp } from "./stdioMcp";
 import { DIALECTS } from "./db/dialect";
 import { createDbMcpServer } from "./db/dbMcpServer";
 import { parseMcpToolResult } from "./parseToolResult";
@@ -22,9 +23,11 @@ interface CacheEntry {
 const sourceCache = new Map<string, CacheEntry>();
 
 function configKey(source: DynamicSourceConfig): string {
-  return source.kind === "http-mcp"
-    ? JSON.stringify(["http-mcp", source.url, source.token ?? ""])
-    : JSON.stringify(["db", source.dbType, source.connectionString]);
+  if (source.kind === "http-mcp")
+    return JSON.stringify(["http-mcp", source.url, source.token ?? ""]);
+  if (source.kind === "db")
+    return JSON.stringify(["db", source.dbType, source.connectionString]);
+  return JSON.stringify(["stdio-cli", source.command, source.args ?? []]);
 }
 
 /** MCP listTools 结果 → AI SDK 工具集（工具定义以 MCP Server 为唯一事实来源）。
@@ -84,6 +87,32 @@ async function buildHttpMcpTools(
         await client.close();
       } catch {
         // 关闭失败不阻断
+      }
+    },
+  };
+}
+
+async function buildStdioTools(
+  source: Extract<DynamicSourceConfig, { kind: "stdio-cli" }>
+): Promise<CacheEntry> {
+  const client = await connectStdioMcp(
+    `openui-dynamic-${source.id}`,
+    source.command,
+    source.args ?? []
+  );
+  const tools = await mountClientTools(
+    client,
+    `Dynamic ${source.id}`,
+    `${source.id}_`
+  );
+  return {
+    key: configKey(source),
+    tools,
+    close: async () => {
+      try {
+        await client.close();
+      } catch {
+        // ignore
       }
     },
   };
@@ -151,7 +180,9 @@ export async function getDynamicSourceTools(
   const entry =
     source.kind === "http-mcp"
       ? await buildHttpMcpTools(source)
-      : await buildDbTools(source);
+      : source.kind === "db"
+        ? await buildDbTools(source)
+        : await buildStdioTools(source);
   sourceCache.set(source.id, entry);
   return entry.tools;
 }

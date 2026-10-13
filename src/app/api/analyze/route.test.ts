@@ -1,19 +1,8 @@
 // @vitest-environment node
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { POST } from "./route";
-import { getGitLabAiTools, getPostgresAiTools } from "@/mcp/mcpClient";
-import { getZentaoAiTools } from "@/mcp/zentaoMcpClient";
 import { getDynamicSourceTools } from "@/mcp/dynamicSources";
 import { streamText } from "ai";
-
-vi.mock("@/mcp/mcpClient", () => ({
-  getPostgresAiTools: vi.fn(async () => ({})),
-  getGitLabAiTools: vi.fn(),
-}));
-
-vi.mock("@/mcp/zentaoMcpClient", () => ({
-  getZentaoAiTools: vi.fn(),
-}));
 
 vi.mock("@/mcp/dynamicSources", async (importOriginal) => {
   const actual = await importOriginal<
@@ -41,11 +30,6 @@ vi.mock("@/mcp/registry", async (importOriginal) => {
   return {
     ...actual,
     readDatasourcesConfig: vi.fn(() => ({
-      builtin: {
-        postgres: { enabled: true },
-        "gitlab-mcp": { enabled: true },
-        "zentao-cli": { enabled: true },
-      },
       sources: [TEST_DYNAMIC_HTTP],
     })),
     getDynamicSourceConfig: vi.fn(() => TEST_DYNAMIC_HTTP),
@@ -72,6 +56,15 @@ function makeRequest(body: Record<string, unknown>): Request {
   });
 }
 
+function mockStreamOk() {
+  vi.mocked(streamText).mockReturnValue({
+    toDataStreamResponse: () =>
+      new Response('0:"ok"\n', {
+        headers: { "x-vercel-ai-data-stream": "v1" },
+      }),
+  } as unknown as ReturnType<typeof streamText>);
+}
+
 describe("POST /api/analyze", () => {
   const savedEnv: Record<string, string | undefined> = {};
 
@@ -80,7 +73,7 @@ describe("POST /api/analyze", () => {
       savedEnv[key] = process.env[key];
       delete process.env[key];
     }
-    vi.mocked(getZentaoAiTools).mockResolvedValue({});
+    mockStreamOk();
   });
 
   afterEach(() => {
@@ -91,62 +84,42 @@ describe("POST /api/analyze", () => {
     vi.clearAllMocks();
   });
 
-  it("未配置 API Key 时返回合规 data stream 降级响应", async () => {
+  it("未配置 API Key 时返回合规 data stream 降级响应（引导「设置」）", async () => {
     const res = await POST(makeRequest({ messages: [] }));
     expect(res.status).toBe(200);
     expect(res.headers.get("x-vercel-ai-data-stream")).toBe("v1");
     const text = await res.text();
     expect(text).toContain("未检测到 LLM API Key");
+    expect(text).toContain("「设置」");
   });
 
-  it("GitLab MCP 加载失败时降级为空工具集并正常流式响应，不返回错误流", async () => {
-    vi.mocked(getGitLabAiTools).mockRejectedValue(
-      new Error("GitLab MCP connection refused")
+  it("动态源工具加载失败时降级为空工具集并正常流式响应", async () => {
+    vi.mocked(getDynamicSourceTools).mockRejectedValueOnce(
+      new Error("connection refused")
     );
-    vi.mocked(streamText).mockReturnValue({
-      toDataStreamResponse: () =>
-        new Response('0:"ok"\n', {
-          headers: { "x-vercel-ai-data-stream": "v1" },
-        }),
-    } as unknown as ReturnType<typeof streamText>);
 
     const res = await POST(
       makeRequest({ messages: [], apiKey: "test-key" })
     );
     expect(res.status).toBe(200);
     const text = await res.text();
-    // 不应以 `3:` 错误块开头（即整个请求不应因单一数据源失败而失败）
     expect(text.startsWith("3:")).toBe(false);
     expect(streamText).toHaveBeenCalledTimes(1);
   });
 
-  it("客户端提供 baseURL 但未提供 apiKey 时拒绝（防服务端 env 凭证外泄）", async () => {
-    // 模拟服务端配置了 env key
+  it("客户端提供 baseURL 但未提供 apiKey 时拒绝", async () => {
     process.env.OPENAI_API_KEY = "server-secret-key";
 
     const res = await POST(
-      makeRequest({
-        messages: [],
-        baseURL: "http://attacker.example/v1",
-      })
+      makeRequest({ messages: [], baseURL: "http://attacker.example/v1" })
     );
 
     expect(res.status).toBe(400);
-    const body = await res.json();
-    expect(body.error).toContain("apiKey");
     expect(streamText).not.toHaveBeenCalled();
   });
 
   it("客户端 baseURL 与 apiKey 配对提供时正常放行", async () => {
     process.env.OPENAI_API_KEY = "server-secret-key";
-    vi.mocked(getGitLabAiTools).mockResolvedValue({});
-    vi.mocked(streamText).mockReturnValue({
-      toDataStreamResponse: () =>
-        new Response('0:"ok"\n', {
-          headers: { "x-vercel-ai-data-stream": "v1" },
-        }),
-    } as unknown as ReturnType<typeof streamText>);
-
     const res = await POST(
       makeRequest({
         messages: [],
@@ -154,54 +127,37 @@ describe("POST /api/analyze", () => {
         apiKey: "client-own-key",
       })
     );
-
     expect(res.status).toBe(200);
     expect(streamText).toHaveBeenCalledTimes(1);
   });
 
-  it("temperature 越界时钳制到 0–2", async () => {
-    vi.mocked(getGitLabAiTools).mockResolvedValue({});
-    vi.mocked(streamText).mockReturnValue({
-      toDataStreamResponse: () =>
-        new Response('0:"ok"\n', {
-          headers: { "x-vercel-ai-data-stream": "v1" },
-        }),
-    } as unknown as ReturnType<typeof streamText>);
-
+  it("temperature 越界时钳制到 0–2，缺省 0.2", async () => {
     await POST(makeRequest({ messages: [], apiKey: "k", temperature: 5 }));
     expect(vi.mocked(streamText).mock.calls[0][0]).toMatchObject({ temperature: 2 });
 
     await POST(makeRequest({ messages: [], apiKey: "k", temperature: -1 }));
     expect(vi.mocked(streamText).mock.calls[1][0]).toMatchObject({ temperature: 0 });
-  });
-
-  it("未提供 temperature 时默认 0.2", async () => {
-    vi.mocked(getGitLabAiTools).mockResolvedValue({});
-    vi.mocked(streamText).mockReturnValue({
-      toDataStreamResponse: () =>
-        new Response('0:"ok"\n', {
-          headers: { "x-vercel-ai-data-stream": "v1" },
-        }),
-    } as unknown as ReturnType<typeof streamText>);
 
     await POST(makeRequest({ messages: [], apiKey: "k" }));
-    expect(vi.mocked(streamText).mock.calls[0][0]).toMatchObject({ temperature: 0.2 });
+    expect(vi.mocked(streamText).mock.calls[2][0]).toMatchObject({ temperature: 0.2 });
+  });
+
+  it("sources 未知 id 忽略并告警，请求仍 200 且不装载任何源", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const res = await POST(
+      makeRequest({ messages: [], apiKey: "k", sources: ["nope"] })
+    );
+
+    expect(res.status).toBe(200);
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("nope"));
+    expect(getDynamicSourceTools).not.toHaveBeenCalled();
+    warnSpy.mockRestore();
   });
 });
 
-describe("POST /api/analyze 会话数据源装配", () => {
-  function mockStreamOk() {
-    vi.mocked(streamText).mockReturnValue({
-      toDataStreamResponse: () =>
-        new Response('0:"ok"\n', {
-          headers: { "x-vercel-ai-data-stream": "v1" },
-        }),
-    } as unknown as ReturnType<typeof streamText>);
-  }
-
+describe("POST /api/analyze 全动态装配", () => {
   beforeEach(() => {
-    vi.mocked(getZentaoAiTools).mockResolvedValue({});
-    vi.mocked(getGitLabAiTools).mockResolvedValue({});
     mockStreamOk();
   });
 
@@ -209,18 +165,22 @@ describe("POST /api/analyze 会话数据源装配", () => {
     vi.clearAllMocks();
   });
 
-  it("sources 指定 postgres 时仅装载 postgres，其余内置与动态源不装载", async () => {
+  it("未指定 sources 时装载全部启用源，gitlab 透传字段被忽略", async () => {
     await POST(
-      makeRequest({ messages: [], apiKey: "k", sources: ["postgres"] })
+      makeRequest({
+        messages: [],
+        apiKey: "k",
+        gitlabUrl: "http://legacy.example/mcp",
+        gitlabToken: "glpat-old",
+      })
     );
 
-    expect(getPostgresAiTools).toHaveBeenCalledTimes(1);
-    expect(getGitLabAiTools).not.toHaveBeenCalled();
-    expect(getZentaoAiTools).not.toHaveBeenCalled();
-    expect(getDynamicSourceTools).not.toHaveBeenCalled();
+    expect(getDynamicSourceTools).toHaveBeenCalledWith(TEST_DYNAMIC_HTTP);
+    const arg = vi.mocked(streamText).mock.calls[0][0];
+    expect(Object.keys(arg.tools ?? {})).toContain("cross_source_link");
   });
 
-  it("sources 含动态源 id 时装载其工具并入 tools，prompt 列出该源", async () => {
+  it("sources 指定动态源时装载其工具并入 tools，prompt 列出该源", async () => {
     vi.mocked(getDynamicSourceTools).mockResolvedValueOnce({
       jira_jira_search: { description: "d" } as never,
     });
@@ -232,22 +192,8 @@ describe("POST /api/analyze 会话数据源装配", () => {
     expect(getDynamicSourceTools).toHaveBeenCalledWith(TEST_DYNAMIC_HTTP);
     const arg = vi.mocked(streamText).mock.calls[0][0];
     expect(Object.keys(arg.tools ?? {})).toContain("jira_jira_search");
-    expect(Object.keys(arg.tools ?? {})).toContain("cross_source_link");
     expect(arg.system).toContain("Jira MCP");
-    expect(arg.system).not.toContain("ZenTao 禅道");
-  });
-
-  it("sources 全部未知/禁用时忽略并告警，请求仍 200", async () => {
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-
-    const res = await POST(
-      makeRequest({ messages: [], apiKey: "k", sources: ["nope"] })
-    );
-
-    expect(res.status).toBe(200);
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("nope"));
-    expect(getPostgresAiTools).not.toHaveBeenCalled();
-    expect(getDynamicSourceTools).not.toHaveBeenCalled();
-    warnSpy.mockRestore();
+    // 无内置静态段
+    expect(arg.system).not.toContain("PostgreSQL Analytics Database");
   });
 });

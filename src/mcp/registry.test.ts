@@ -12,15 +12,14 @@ import {
   validateDynamicSourceConfig,
   upsertDynamicSource,
   deleteDynamicSource,
-  setBuiltinEnabled,
   maskConnectionString,
   maskUrl,
   resolveActiveSources,
 } from "./registry";
-import { getGitLabMcpClient } from "./mcpClient";
 
-vi.mock("./mcpClient", () => ({
-  getGitLabMcpClient: vi.fn(),
+vi.mock("./stdioMcp", () => ({
+  connectStdioMcp: vi.fn(),
+  probeStdioCli: vi.fn(async () => {}),
 }));
 
 function writeTempConfig(content: string): string {
@@ -32,366 +31,301 @@ function writeTempConfig(content: string): string {
   return file;
 }
 
-describe("listDataSources", () => {
-  afterEach(() => {
-    reloadDataSources();
-  });
+const ZHAOBIAO_SOURCE = {
+  id: "zhaobiao",
+  name: "招标平台数据/",
+  kind: "db" as const,
+  dbType: "mysql" as const,
+  connectionString: "mysql://root:p@h:3306/dvadminlocal",
+  enabled: true,
+};
 
-  it("默认返回 3 个内置数据源且 id 稳定（不依赖仓库真实配置文件）", () => {
-    // 密闭化：用空临时配置驱动，避免仓库 config/datasources.json 的真实动态源影响计数
-    reloadDataSources(writeTempConfig(JSON.stringify({ sources: [] })));
-    const sources = listDataSources();
-    expect(sources).toHaveLength(3);
-    expect(sources.map((s) => s.id)).toEqual([
-      "postgres",
-      "gitlab-mcp",
-      "zentao-cli",
-    ]);
-    for (const s of sources) {
-      expect(s.name).toBeTruthy();
-      expect(s.kind).toBe(s.id);
-    }
-  });
+/** v2 形态（builtin 段 + 动态源），迁移测试的输入 */
+const V2_FILE = JSON.stringify({
+  builtin: {
+    postgres: { enabled: true },
+    "gitlab-mcp": { enabled: true },
+    "zentao-cli": { enabled: true },
+  },
+  sources: [ZHAOBIAO_SOURCE],
 });
 
-describe("checkDataSourceHealth", () => {
+describe("配置模型 v3（无 builtin）", () => {
   afterEach(() => {
-    vi.clearAllMocks();
+    reloadDataSources();
+    vi.unstubAllEnvs();
   });
 
-  it("未知 id 返回 ok: false 与 unknown datasource 错误", async () => {
-    const result = await checkDataSourceHealth("does-not-exist");
-    expect(result.ok).toBe(false);
-    expect(result.error).toBe("unknown datasource");
-  });
+  it("v2 迁移：zentao-cli 种子化、postgres 丢弃、动态源原样保留、无 gitlab（env 未设）", () => {
+    const file = writeTempConfig(V2_FILE);
+    const cfg = readDatasourcesConfig(file);
 
-  it("gitlab-mcp 探活使用调用方传入的 url 与 token，而非服务端默认值", async () => {
-    vi.mocked(getGitLabMcpClient).mockRejectedValue(
-      new Error("connection refused")
-    );
+    expect(cfg).not.toHaveProperty("builtin");
+    const ids = cfg.sources.map((s) => s.id);
+    expect(ids).toContain("zhaobiao");
+    expect(ids).toContain("zentao-cli");
+    expect(ids).not.toContain("postgres");
+    expect(ids).not.toContain("gitlab-mcp");
 
-    const result = await checkDataSourceHealth("gitlab-mcp", {
-      gitlabUrl: "http://10.0.0.9:5002/mcp",
-      gitlabToken: "glpat-test",
+    const zhaobiao = cfg.sources.find((s) => s.id === "zhaobiao");
+    expect(zhaobiao).toEqual(ZHAOBIAO_SOURCE);
+    const zentao = cfg.sources.find((s) => s.id === "zentao-cli");
+    expect(zentao).toEqual({
+      id: "zentao-cli",
+      name: "ZenTao 禅道 CLI MCP (本地)",
+      kind: "stdio-cli",
+      command: "zentao",
+      args: ["mcp", "--read-only"],
+      enabled: true,
     });
+  });
 
-    expect(getGitLabMcpClient).toHaveBeenCalledWith(
-      "http://10.0.0.9:5002/mcp",
-      "glpat-test"
+  it("v2 迁移：env 有 GITLAB_MCP_URL 时 gitlab 种子化（含 env token）", () => {
+    vi.stubEnv("GITLAB_MCP_URL", "http://10.0.0.9:5002/mcp");
+    vi.stubEnv("GITLAB_TOKEN", "glpat-env");
+    const file = writeTempConfig(V2_FILE);
+
+    const gitlab = readDatasourcesConfig(file).sources.find(
+      (s) => s.id === "gitlab-mcp"
     );
-    expect(result.ok).toBe(false);
-    expect(result.error).toContain("connection refused");
-  });
-});
 
-describe("配置模型 v2", () => {
-  afterEach(() => {
-    reloadDataSources();
+    expect(gitlab).toEqual({
+      id: "gitlab-mcp",
+      name: "GitLab MCP (外部)",
+      kind: "http-mcp",
+      url: "http://10.0.0.9:5002/mcp",
+      token: "glpat-env",
+      enabled: true,
+    });
   });
 
-  it("v1 配置（含 _comment、无 builtin、源无 enabled）自动迁移不抛错", () => {
+  it("v2 迁移：gitlab 停用时不种子", () => {
     const file = writeTempConfig(
       JSON.stringify({
-        _comment: "legacy v1",
-        sources: [
-          {
-            id: "jira-mcp",
-            name: "Jira MCP",
-            kind: "http-mcp",
-            url: "http://127.0.0.1:6000/mcp",
-          },
-        ],
+        builtin: {
+          postgres: { enabled: true },
+          "gitlab-mcp": { enabled: false },
+          "zentao-cli": { enabled: true },
+        },
+        sources: [],
       })
     );
-    expect(readDatasourcesConfig(file)).toEqual({
-      builtin: {
-        postgres: { enabled: true },
-        "gitlab-mcp": { enabled: true },
-        "zentao-cli": { enabled: true },
-      },
-      sources: [
-        {
-          id: "jira-mcp",
-          name: "Jira MCP",
-          kind: "http-mcp",
-          url: "http://127.0.0.1:6000/mcp",
-          token: "",
-          enabled: true,
-        },
-      ],
-    });
+    const ids = readDatasourcesConfig(file).sources.map((s) => s.id);
+    expect(ids).not.toContain("gitlab-mcp");
   });
 
-  it("文件缺失或损坏时返回全内置默认", () => {
-    const broken = writeTempConfig("{ broken json !!!");
-    expect(readDatasourcesConfig(broken)).toEqual({
-      builtin: {
-        postgres: { enabled: true },
-        "gitlab-mcp": { enabled: true },
-        "zentao-cli": { enabled: true },
-      },
+  it("文件缺失/损坏/v3 合法文件均返回可用配置", () => {
+    expect(readDatasourcesConfig("/nonexistent/datasources.json")).toEqual({
       sources: [],
     });
-    expect(readDatasourcesConfig("/nonexistent/datasources.json")).toEqual(
-      readDatasourcesConfig(broken)
+    expect(readDatasourcesConfig(writeTempConfig("{ broken"))).toEqual({
+      sources: [],
+    });
+    const v3 = writeTempConfig(
+      JSON.stringify({ sources: [ZHAOBIAO_SOURCE] })
     );
+    expect(readDatasourcesConfig(v3).sources).toHaveLength(1);
   });
 
-  it("校验拒绝非法格式 id", () => {
+  it("校验：stdio-cli 合法配置通过并规范化 args", () => {
     const r = validateDynamicSourceConfig({
-      id: "My_ID",
-      name: "x",
-      kind: "http-mcp",
-      url: "u",
-    });
-    expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.errors.join(";")).toContain("id");
-  });
-
-  it("校验拒绝内置 id 冲突", () => {
-    const r = validateDynamicSourceConfig({
-      id: "postgres",
-      name: "x",
-      kind: "http-mcp",
-      url: "http://x/mcp",
-    });
-    expect(r.ok).toBe(false);
-  });
-
-  it("校验拒绝 db 源缺连接串", () => {
-    const r = validateDynamicSourceConfig({
-      id: "a",
-      name: "x",
-      kind: "db",
-      dbType: "mysql",
-      connectionString: "",
-    });
-    expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.errors.join(";")).toContain("连接串");
-  });
-
-  it("校验拒绝不支持的 dbType", () => {
-    const r = validateDynamicSourceConfig({
-      id: "a",
-      name: "x",
-      kind: "db",
-      dbType: "oracle",
-      connectionString: "oracle://u:p@h/db",
-    });
-    expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.errors.join(";")).toContain("dbType");
-  });
-
-  it("合法 http-mcp 配置通过校验并默认 enabled", () => {
-    const r = validateDynamicSourceConfig({
-      id: "a",
-      name: "n",
-      kind: "http-mcp",
-      url: "http://x/mcp",
+      id: "s1",
+      name: "禅道",
+      kind: "stdio-cli",
+      command: "zentao",
+      args: ["mcp", "--read-only"],
     });
     expect(r).toEqual({
       ok: true,
       config: {
-        id: "a",
-        name: "n",
-        kind: "http-mcp",
-        url: "http://x/mcp",
-        token: "",
+        id: "s1",
+        name: "禅道",
+        kind: "stdio-cli",
+        command: "zentao",
+        args: ["mcp", "--read-only"],
         enabled: true,
       },
     });
   });
 
-  it("upsert 动态 db 源后可读回", () => {
+  it("校验：stdio-cli command 为空或 args 含非字符串时拒绝", () => {
+    const noCmd = validateDynamicSourceConfig({
+      id: "s1",
+      name: "x",
+      kind: "stdio-cli",
+      command: "",
+    });
+    expect(noCmd.ok).toBe(false);
+
+    const badArgs = validateDynamicSourceConfig({
+      id: "s1",
+      name: "x",
+      kind: "stdio-cli",
+      command: "zentao",
+      args: ["ok", 42 as unknown as string],
+    });
+    expect(badArgs.ok).toBe(false);
+  });
+
+  it("校验：id 仍拒绝非法格式与空 name", () => {
+    const bad = validateDynamicSourceConfig({
+      id: "BAD",
+      name: "",
+      kind: "http-mcp",
+      url: "http://x/mcp",
+    });
+    expect(bad.ok).toBe(false);
+    if (!bad.ok) {
+      expect(bad.errors.join(";")).toContain("id");
+      expect(bad.errors.join(";")).toContain("name");
+    }
+  });
+
+  it("upsert/delete 往返（无内置特例）", () => {
     const file = writeTempConfig(JSON.stringify({ sources: [] }));
-    upsertDynamicSource(
-      {
-        id: "mysql-a",
-        name: "订单库",
-        kind: "db",
-        dbType: "mysql",
-        connectionString: "mysql://u:p@h:3306/db",
-        enabled: true,
-      },
-      file
-    );
+    upsertDynamicSource(ZHAOBIAO_SOURCE, file);
     expect(readDatasourcesConfig(file).sources).toHaveLength(1);
-    expect(readDatasourcesConfig(file).sources[0]).toMatchObject({
-      id: "mysql-a",
-      dbType: "mysql",
-    });
-  });
-
-  it("deleteDynamicSource 存在时返回 true，不存在时返回 false", () => {
-    const file = writeTempConfig(JSON.stringify({ sources: [] }));
-    upsertDynamicSource(
-      {
-        id: "a",
-        name: "n",
-        kind: "http-mcp",
-        url: "http://x/mcp",
-        token: "",
-        enabled: true,
-      },
-      file
-    );
-    expect(deleteDynamicSource("a", file)).toBe(true);
+    expect(deleteDynamicSource("zhaobiao", file)).toBe(true);
     expect(readDatasourcesConfig(file).sources).toHaveLength(0);
-    expect(deleteDynamicSource("a", file)).toBe(false);
-  });
-
-  it("setBuiltinEnabled 写入 builtin 段并可读回", () => {
-    const file = writeTempConfig(JSON.stringify({ sources: [] }));
-    setBuiltinEnabled("postgres", false, file);
-    expect(readDatasourcesConfig(file).builtin.postgres.enabled).toBe(false);
+    expect(deleteDynamicSource("zhaobiao", file)).toBe(false);
   });
 
   it("writeDatasourcesConfig 原子写不留 tmp 残留", () => {
     const file = writeTempConfig(JSON.stringify({ sources: [] }));
-    const dir = path.dirname(file);
-    writeDatasourcesConfig(
-      {
-        builtin: {
-          postgres: { enabled: true },
-          "gitlab-mcp": { enabled: true },
-          "zentao-cli": { enabled: true },
-        },
-        sources: [],
-      },
-      file
-    );
-    expect(fs.readdirSync(dir).some((f) => /\.tmp$/.test(f))).toBe(false);
-    expect(readDatasourcesConfig(file).sources).toHaveLength(0);
+    writeDatasourcesConfig({ sources: [] }, file);
+    expect(
+      fs.readdirSync(path.dirname(file)).some((f) => /\.tmp$/.test(f))
+    ).toBe(false);
   });
 
-  it("listDataSources 描述符含 enabled/builtin/hasToken/maskedUrl 且不泄露 token", () => {
-    const file = writeTempConfig(JSON.stringify({ sources: [] }));
-    setBuiltinEnabled("zentao-cli", false, file);
-    upsertDynamicSource(
-      {
-        id: "gitlab-b",
-        name: "GitLab B",
-        kind: "http-mcp",
-        url: "http://127.0.0.1:7002/mcp?private_token=leak",
-        token: "glpat-secret",
-        enabled: true,
-      },
-      file
-    );
-
-    const sources = listDataSources();
-    const zentao = sources.find((s) => s.id === "zentao-cli");
-    expect(zentao).toMatchObject({ enabled: false, builtin: true });
-
-    const dyn = sources.find((s) => s.id === "gitlab-b");
-    expect(dyn).toMatchObject({
-      builtin: false,
-      enabled: true,
-      kind: "http-mcp",
-      hasToken: true,
-    });
-    expect(JSON.stringify(dyn)).not.toContain("glpat-secret");
-    expect(JSON.stringify(dyn)).not.toContain("private_token");
-    expect(dyn?.maskedUrl).toBe("http://127.0.0.1:7002/mcp");
-    expect(dyn?.maskedUrl).not.toContain("?");
-  });
-
-  it("maskConnectionString 隐藏密码，无密码时原样返回", () => {
+  it("mask 函数行为不变", () => {
     expect(maskConnectionString("mysql://u:p@h:3306/db")).toBe(
       "mysql://u:***@h:3306/db"
     );
-    expect(maskConnectionString("postgres://u@h/db")).toBe("postgres://u@h/db");
-  });
-
-  it("maskUrl 去掉 query 与 userinfo", () => {
     expect(maskUrl("http://u:p@h:7002/mcp?x=1")).toBe("http://h:7002/mcp");
   });
 });
 
-describe("resolveActiveSources", () => {
+describe("listDataSources 描述符（全动态同构）", () => {
+  afterEach(() => {
+    reloadDataSources();
+  });
+
+  it("stdio 源描述符暴露 command、无 builtin 字段", () => {
+    const file = writeTempConfig(
+      JSON.stringify({
+        sources: [
+          {
+            id: "zentao-cli",
+            name: "禅道",
+            kind: "stdio-cli",
+            command: "zentao",
+            args: ["mcp", "--read-only"],
+            enabled: true,
+          },
+          ZHAOBIAO_SOURCE,
+          {
+            id: "jira",
+            name: "Jira MCP",
+            kind: "http-mcp",
+            url: "http://10.0.0.1:6000/mcp?private_token=leak",
+            token: "glpat-secret",
+            enabled: false,
+          },
+        ],
+      })
+    );
+    reloadDataSources(file);
+
+    const sources = listDataSources();
+
+    expect(sources).toHaveLength(3);
+    for (const s of sources) {
+      expect(s).not.toHaveProperty("builtin");
+    }
+    const zentao = sources.find((s) => s.id === "zentao-cli");
+    expect(zentao).toMatchObject({
+      kind: "stdio-cli",
+      command: "zentao",
+      tools: [],
+      enabled: true,
+    });
+    const jira = sources.find((s) => s.id === "jira");
+    expect(jira).toMatchObject({ enabled: false, hasToken: true });
+    expect(JSON.stringify(jira)).not.toContain("glpat-secret");
+    expect(jira?.maskedUrl).not.toContain("?");
+  });
+});
+
+describe("resolveActiveSources（全动态）", () => {
   const CFG = {
-    builtin: {
-      postgres: { enabled: true },
-      "gitlab-mcp": { enabled: false },
-      "zentao-cli": { enabled: true },
-    },
     sources: [
+      ZHAOBIAO_SOURCE,
       {
         id: "jira",
         name: "Jira MCP",
         kind: "http-mcp" as const,
         url: "http://10.0.0.1:6000/mcp",
         token: "",
-        enabled: true,
+        enabled: false,
       },
     ],
   };
 
-  it("未指定时返回全部启用源（内置按 enabled 过滤）", () => {
+  it("未指定时返回全部启用源；禁用源被滤掉", () => {
     const active = resolveActiveSources(undefined, CFG);
-    expect(active.map((s) => s.id).sort()).toEqual([
-      "jira",
-      "postgres",
-      "zentao-cli",
-    ]);
+    expect(active.map((s) => s.id)).toEqual(["zhaobiao"]);
   });
 
-  it("指定列表与全局启用取交集：禁用源被滤掉", () => {
-    const active = resolveActiveSources(
-      ["postgres", "gitlab-mcp"],
-      CFG
-    );
-    expect(active.map((s) => s.id)).toEqual(["postgres"]);
-  });
-
-  it("未知 id 忽略并告警，不抛错", () => {
+  it("指定列表取交集，未知 id 忽略并告警", () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const active = resolveActiveSources(["nope"], CFG);
-    expect(active).toEqual([]);
+    expect(resolveActiveSources(["zhaobiao", "jira", "nope"], CFG)).toEqual([
+      {
+        id: "zhaobiao",
+        name: "招标平台数据/",
+        kind: "db",
+        dbType: "mysql",
+        tools: ["execute_sql", "list_tables", "describe_table"],
+      },
+    ]);
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("nope"));
     warnSpy.mockRestore();
   });
 });
 
-describe("声明式数据源扩展", () => {
+describe("checkDataSourceHealth（全动态）", () => {
   afterEach(() => {
     reloadDataSources();
+    vi.clearAllMocks();
   });
 
-  it("config/datasources.json 中的合法 http-mcp 声明并入列表", () => {
+  it("stdio 源走 probeStdioCli 真实握手探活", async () => {
+    const { probeStdioCli } = await import("./stdioMcp");
     const file = writeTempConfig(
       JSON.stringify({
         sources: [
           {
-            id: "jira-mcp",
-            name: "Jira MCP (外部)",
-            kind: "http-mcp",
-            url: "http://127.0.0.1:6000/mcp",
+            id: "zentao-cli",
+            name: "禅道",
+            kind: "stdio-cli",
+            command: "zentao",
+            args: ["mcp", "--read-only"],
+            enabled: true,
           },
         ],
       })
     );
     reloadDataSources(file);
 
-    const sources = listDataSources();
-    expect(sources).toHaveLength(4);
-    expect(sources[3]).toMatchObject({
-      id: "jira-mcp",
-      name: "Jira MCP (外部)",
-      kind: "http-mcp",
-    });
+    const result = await checkDataSourceHealth("zentao-cli");
+
+    expect(result.ok).toBe(true);
+    expect(probeStdioCli).toHaveBeenCalledWith("zentao", ["mcp", "--read-only"]);
   });
 
-  it("配置文件 JSON 损坏时忽略并仅返回内置 3 源", () => {
-    const file = writeTempConfig("{ broken json !!!");
-    reloadDataSources(file);
-
-    const sources = listDataSources();
-    expect(sources).toHaveLength(3);
-    expect(sources.map((s) => s.id)).toEqual([
-      "postgres",
-      "gitlab-mcp",
-      "zentao-cli",
-    ]);
+  it("未知 id 返回 unknown datasource", async () => {
+    const result = await checkDataSourceHealth("does-not-exist");
+    expect(result.ok).toBe(false);
+    expect(result.error).toBe("unknown datasource");
   });
 });

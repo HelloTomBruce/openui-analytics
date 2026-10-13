@@ -33,6 +33,7 @@ interface FormState {
 const CLOSED_FORM: null = null;
 
 function kindBadge(source: DataSourceDescriptor): string {
+  if (source.kind === "stdio-cli") return "本地 CLI";
   if (source.kind === "db") {
     return source.dbType === "mysql" ? "MySQL" : "PostgreSQL";
   }
@@ -169,7 +170,7 @@ export function DatasourceSettings({
                 <span className="flex-1 truncate text-slate-600 dark:text-slate-300">
                   {s.name}
                 </span>
-                {!s.builtin && (
+                {(
                   <span
                     className={`text-[10px] px-2 py-0.5 rounded font-medium shrink-0 ${badgeClass(s)}`}
                   >
@@ -201,7 +202,7 @@ export function DatasourceSettings({
                     <Key className="w-3.5 h-3.5" />
                   </button>
                 )}
-                {!s.builtin && (
+                {(
                   <>
                     <button
                       onClick={() => openEdit(s)}

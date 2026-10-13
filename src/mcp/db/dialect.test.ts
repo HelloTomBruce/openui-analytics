@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { assertReadOnlySql, enforceRowLimit } from "./postgres";
+import { assertReadOnlySql, enforceRowLimit } from "./dialect";
 
 describe("assertReadOnlySql", () => {
   it("允许标准 SELECT 查询", () => {

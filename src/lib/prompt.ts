@@ -17,66 +17,26 @@ action_plan = ActionPlanCard("迭代风险干预建议", "基于 Bug 收敛速�
 table = DataTable("未关闭 Bug 明细", [{"key":"id","header":"编号"},{"key":"title","header":"标题"},{"key":"severity","header":"严重度"},{"key":"assignedTo","header":"负责人"},{"key":"status","header":"状态"}], [{"id":"BUG-1024","title":"看板图表导出乱码","severity":"严重","assignedTo":"张伟","status":"处理中"},{"id":"BUG-1031","title":"工时统计口径不一致","severity":"一般","assignedTo":"李娜","status":"已确认"}])
 insight = InsightBox("tip", "迭代健康度总结", "Bug 收敛速度高于新增速度，工时分布总体健康，建议优先拦截严重 Bug 并平衡张伟的任务负载。")`;
 
-const BUILTIN_SECTION_TEXT = {
-  postgres: `1. **PostgreSQL Analytics Database** (via MCP):
-   - \`list_tables\`: Discover available business tables.
-   - \`describe_table\`: Inspect columns and data types for a specific table when needed.
-   - \`execute_sql\`: Execute read-only SQL queries to calculate business metrics, aggregations, and trends.`,
-  "gitlab-mcp": `2. **GitLab Repository & Engineering Data** (via external MCP):
-   - \`gitlab_*\`: Query project repositories, merge requests, code reviews, commit velocity, issues, pipelines, and engineering stats when relevant.`,
-  "zentao-cli": `3. **ZenTao 禅道 Project Management Data** (via local ZenTao CLI MCP):
-   - \`zentao_project\`: Query project list (\`action: "list"\`), team members (\`action: "team"\`), progress, budget, etc.
-   - \`zentao_execution\`: Query execution/sprint tasks, progress, and burndown data.
-   - \`zentao_story\`: Query product requirements/user stories, status (active/closed/changed), priority, and stages.
-   - \`zentao_task\`: Query task lists, assigned members, estimated/consumed/left hours, status, and delays.
-   - \`zentao_bug\`: Query defects/bugs by project/product, severity, resolution status, assigned developer/tester.
-   - \`zentao_testcase\` / \`zentao_testtask\`: Query QA test cases and test run results.
-   - \`zentao_user\` / \`zentao_my\`: Query user profile, personal tasks, assigned bugs, and workload.
-   - \`zentao_action_help\`: Look up parameters/actions for any ZenTao module if needed.`,
-} as const;
-
-const CROSS_SOURCE_TEXT = `4. **Cross-Source Mapping**:
-   - \`cross_source_link\`: Query the mapping between a ZenTao project ID and its GitLab repository path for joint analysis.`;
-
-/**
- * 生成「## Data Access」段：无参 = 三内置全开（守护现有行为）；
- * 有参 = 内置段按激活过滤（重新编号）+ 追加动态源清单。
- * cross_source_link 工具常挂，其说明段始终保留。
- */
-function dataAccessSection(activeSources?: ActiveSourceSummary[]): string {
-  const active = new Set((activeSources ?? []).map((s) => s.id));
-  const on = (id: keyof typeof BUILTIN_SECTION_TEXT) =>
-    activeSources === undefined || active.has(id);
-
-  const entries: string[] = [];
+function dataAccessSection(activeSources: ActiveSourceSummary[]): string {
+  const lines: string[] = [];
   let n = 1;
-  const push = (text: string) => {
-    entries.push(text.replace(/^(\d+)\./, `${n++}.`));
-  };
-
-  if (on("postgres")) push(BUILTIN_SECTION_TEXT.postgres);
-  if (on("gitlab-mcp")) push(BUILTIN_SECTION_TEXT["gitlab-mcp"]);
-  if (on("zentao-cli")) push(BUILTIN_SECTION_TEXT["zentao-cli"]);
-  push(CROSS_SOURCE_TEXT);
-
-  const dynamic = (activeSources ?? []).filter(
-    (s) => !(s.id in BUILTIN_SECTION_TEXT)
-  );
-  if (dynamic.length > 0) {
-    const lines = dynamic.map(
-      (s) =>
-        `   - **${s.name}** (${s.kind}${s.dbType ? `: ${s.dbType}` : ""}): ${
-          s.tools.length > 0 ? s.tools.join(", ") : "tools discovered dynamically"
-        }. Read-only when it is a database source.`
+  for (const src of activeSources) {
+    const kindLabel =
+      src.kind === "db" ? `db${src.dbType ? `: ${src.dbType}` : ""}` : src.kind;
+    const tools =
+      src.tools.length > 0 ? src.tools.join(", ") : "tools discovered dynamically";
+    lines.push(
+      `${n++}. **${src.name}** (${kindLabel}):\n   - ${tools}. Database sources are strictly read-only.`
     );
-    entries.push(`${n++}. **Additional Data Sources**:\n${lines.join("\n")}`);
   }
-
-  return `## Data Access:\n${entries.join("\n")}`;
+  lines.push(
+    `${n++}. **Cross-Source Mapping**:\n   - \`cross_source_link\`: Query the mapping between a ZenTao project ID and its GitLab repository path for joint analysis.`
+  );
+  return `## Data Access:\n${lines.join("\n")}`;
 }
 
 export function getOpenUISystemPrompt(
-  activeSources?: ActiveSourceSummary[]
+  activeSources: ActiveSourceSummary[]
 ): string {
   const preamble = `You are an expert Data Analyst & Engineering BI Assistant powered by OpenUI Generative UI and MCP (Model Context Protocol).
 

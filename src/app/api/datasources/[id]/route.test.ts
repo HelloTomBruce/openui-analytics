@@ -2,7 +2,6 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { PATCH, DELETE } from "./route";
 import {
   upsertDynamicSource,
-  setBuiltinEnabled,
   deleteDynamicSource,
   getDynamicSourceConfig,
 } from "@/mcp/registry";
@@ -15,8 +14,7 @@ vi.mock("@/mcp/registry", async (importOriginal) => {
   return {
     ...actual,
     upsertDynamicSource: vi.fn(),
-    setBuiltinEnabled: vi.fn(),
-    deleteDynamicSource: vi.fn(() => true),
+      deleteDynamicSource: vi.fn(() => true),
     getDynamicSourceConfig: vi.fn(() => undefined),
   };
 });
@@ -100,25 +98,27 @@ describe("PATCH /api/datasources/:id", () => {
     );
   });
 
-  it("内置源仅接受 enabled，其余字段 400", async () => {
-    const res = await PATCH(
-      new Request(`${BASE}/postgres`, {
-        method: "PATCH",
-        body: JSON.stringify({ url: "http://x" }),
-      }),
-      makeContext("postgres")
-    );
-    expect(res.status).toBe(400);
+  it("内置源特例已移除：任意源 PATCH command 字段 200", async () => {
+    vi.mocked(getDynamicSourceConfig).mockReturnValueOnce({
+      id: "zc",
+      name: "禅道",
+      kind: "stdio-cli",
+      command: "zentao",
+      args: ["mcp", "--read-only"],
+      enabled: true,
+    });
 
-    const okRes = await PATCH(
-      new Request(`${BASE}/postgres`, {
+    const res = await PATCH(
+      new Request(`${BASE}/zc`, {
         method: "PATCH",
-        body: JSON.stringify({ enabled: false }),
+        body: JSON.stringify({ command: "zentao2" }),
       }),
-      makeContext("postgres")
+      makeContext("zc")
     );
-    expect(okRes.status).toBe(200);
-    expect(setBuiltinEnabled).toHaveBeenCalledWith("postgres", false);
+    expect(res.status).toBe(200);
+    expect(upsertDynamicSource).toHaveBeenCalledWith(
+      expect.objectContaining({ command: "zentao2", kind: "stdio-cli" })
+    );
   });
 
   it("更新成功后关闭旧连接以触发重建", async () => {
@@ -163,13 +163,88 @@ describe("DELETE /api/datasources/:id", () => {
     expect(closeDynamicSource).toHaveBeenCalledWith("jira");
   });
 
-  it("内置源返回 405", async () => {
-    const res = await DELETE(
-      new Request(`${BASE}/postgres`, { method: "DELETE" }),
-      makeContext("postgres")
+  it("不存在的源返回 404", async () => {
+    const res = await PATCH(
+      new Request(`${BASE}/nope`, {
+        method: "PATCH",
+        body: JSON.stringify({ enabled: true }),
+      }),
+      makeContext("nope")
     );
-    expect(res.status).toBe(405);
-    expect(deleteDynamicSource).not.toHaveBeenCalled();
+    expect(res.status).toBe(404);
+  });
+});
+
+describe("DELETE /api/datasources/:id", () => {
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("删除动态源并关闭其连接", async () => {
+    const res = await DELETE(
+      new Request(`${BASE}/jira`, { method: "DELETE" }),
+      makeContext("jira")
+    );
+
+    expect(res.status).toBe(204);
+    expect(deleteDynamicSource).toHaveBeenCalledWith("jira");
+    expect(closeDynamicSource).toHaveBeenCalledWith("jira");
+  });
+
+  it("不存在的源返回 404", async () => {
+    const res = await PATCH(
+      new Request(`${BASE}/nope`, {
+        method: "PATCH",
+        body: JSON.stringify({ enabled: true }),
+      }),
+      makeContext("nope")
+    );
+    expect(res.status).toBe(404);
+  });
+});
+
+describe("DELETE /api/datasources/:id", () => {
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("删除动态源并关闭其连接", async () => {
+    const res = await DELETE(
+      new Request(`${BASE}/jira`, { method: "DELETE" }),
+      makeContext("jira")
+    );
+
+    expect(res.status).toBe(204);
+    expect(deleteDynamicSource).toHaveBeenCalledWith("jira");
+    expect(closeDynamicSource).toHaveBeenCalledWith("jira");
+  });
+
+  it("不存在的源返回 404", async () => {
+    const res = await PATCH(
+      new Request(`${BASE}/nope`, {
+        method: "PATCH",
+        body: JSON.stringify({ enabled: true }),
+      }),
+      makeContext("nope")
+    );
+    expect(res.status).toBe(404);
+  });
+});
+
+describe("DELETE /api/datasources/:id", () => {
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("删除动态源并关闭其连接", async () => {
+    const res = await DELETE(
+      new Request(`${BASE}/jira`, { method: "DELETE" }),
+      makeContext("jira")
+    );
+
+    expect(res.status).toBe(204);
+    expect(deleteDynamicSource).toHaveBeenCalledWith("jira");
+    expect(closeDynamicSource).toHaveBeenCalledWith("jira");
   });
 
   it("不存在的源返回 404", async () => {

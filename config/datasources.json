@@ -1,14 +1,23 @@
 {
-  "builtin": {
-    "postgres": {
+  "sources": [
+    {
+      "id": "zentao-cli",
+      "name": "ZenTao 禅道 CLI MCP (本地)",
+      "kind": "stdio-cli",
+      "command": "zentao",
+      "args": [
+        "mcp",
+        "--read-only"
+      ],
       "enabled": true
     },
-    "gitlab-mcp": {
-      "enabled": true
-    },
-    "zentao-cli": {
+    {
+      "id": "zhaobiao",
+      "name": "招标平台数据/",
+      "kind": "db",
+      "dbType": "mysql",
+      "connectionString": "mysql://root:Fastech@2020@192.168.0.208:3306/dvadminlocal",
       "enabled": true
     }
-  },
-  "sources": []
+  ]
 }

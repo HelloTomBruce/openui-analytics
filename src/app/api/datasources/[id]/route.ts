@@ -1,10 +1,7 @@
 import {
-  BUILTIN_SOURCE_IDS,
-  type BuiltinSourceId,
   type DynamicSourceConfig,
   validateDynamicSourceConfig,
   upsertDynamicSource,
-  setBuiltinEnabled,
   deleteDynamicSource,
   getDynamicSourceConfig,
   describeDynamicSource,
@@ -12,10 +9,10 @@ import {
 import { closeDynamicSource } from "@/mcp/dynamicSources";
 
 /**
- * PATCH /api/datasources/:id
- * 部分更新：动态源可改 name/enabled/url/token/connectionString；
- * token 不传 = 保留旧值，显式传 "" = 清空。内置源仅接受 enabled。
- * 更新成功后关闭旧连接（下次使用时按新配置重建）。
+ * PATCH /api/datasources/:id — 部分更新（所有源同构）。
+ * name/enabled/命令类字段（url/command/args/dbType）显式传入才更新；
+ * 凭证类字段（token/connectionString）留空 = 保留旧值，显式 "" = 清空。
+ * 成功后关闭旧连接按新配置重建。
  */
 export async function PATCH(
   request: Request,
@@ -28,24 +25,6 @@ export async function PATCH(
       unknown
     >;
 
-    if ((BUILTIN_SOURCE_IDS as readonly string[]).includes(id)) {
-      const extra = Object.keys(body).filter((k) => k !== "enabled");
-      if (extra.length > 0) {
-        return Response.json(
-          { error: `内置数据源仅接受 enabled 字段，不接受: ${extra.join(", ")}` },
-          { status: 400 }
-        );
-      }
-      if (typeof body.enabled !== "boolean") {
-        return Response.json(
-          { error: "enabled 必须是 boolean" },
-          { status: 400 }
-        );
-      }
-      setBuiltinEnabled(id as BuiltinSourceId, body.enabled);
-      return Response.json({ ok: true });
-    }
-
     const existing = getDynamicSourceConfig(id);
     if (!existing) {
       return Response.json({ error: `数据源不存在: ${id}` }, { status: 404 });
@@ -55,8 +34,7 @@ export async function PATCH(
       ...existing,
       ...(typeof body.name === "string" ? { name: body.name.trim() } : {}),
       ...(typeof body.enabled === "boolean" ? { enabled: body.enabled } : {}),
-      ...(existing.kind === "http-mcp" &&
-      typeof body.token === "string"
+      ...(existing.kind === "http-mcp" && typeof body.token === "string"
         ? { token: body.token }
         : {}),
       ...(existing.kind === "http-mcp" && typeof body.url === "string"
@@ -65,6 +43,12 @@ export async function PATCH(
       ...(existing.kind === "db" &&
       typeof body.connectionString === "string"
         ? { connectionString: body.connectionString }
+        : {}),
+      ...(existing.kind === "stdio-cli" && typeof body.command === "string"
+        ? { command: body.command.trim() }
+        : {}),
+      ...(existing.kind === "stdio-cli" && Array.isArray(body.args)
+        ? { args: body.args.map(String).filter((a) => a.length > 0) }
         : {}),
     };
 
@@ -82,8 +66,7 @@ export async function PATCH(
 }
 
 /**
- * DELETE /api/datasources/:id
- * 删除动态源并关闭其缓存连接；内置源 405（请用启停），不存在 404。
+ * DELETE /api/datasources/:id — 删除任意源并关闭其缓存连接；不存在 404。
  */
 export async function DELETE(
   _request: Request,
@@ -91,12 +74,6 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
-    if ((BUILTIN_SOURCE_IDS as readonly string[]).includes(id)) {
-      return Response.json(
-        { error: "内置数据源不可删除，可使用启停开关" },
-        { status: 405 }
-      );
-    }
     const deleted = deleteDynamicSource(id);
     if (!deleted) {
       return Response.json({ error: `数据源不存在: ${id}` }, { status: 404 });

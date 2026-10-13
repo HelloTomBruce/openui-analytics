@@ -7,7 +7,6 @@ export interface PickerSource {
   id: string;
   name: string;
   enabled: boolean;
-  builtin?: boolean;
 }
 
 interface SourcePickerProps {
@@ -68,9 +67,6 @@ export function SourcePicker({ sources, selected, onChange }: SourcePickerProps)
                 aria-label={s.name}
               />
               <span className="truncate flex-1">{s.name}</span>
-              {s.builtin && (
-                <span className="text-[9px] text-slate-400 shrink-0">内置</span>
-              )}
             </label>
           ))}
         </div>

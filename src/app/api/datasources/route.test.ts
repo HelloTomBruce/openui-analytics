@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { GET, POST } from "./route";
 import {
-  checkDataSourceHealth,
   listDataSources,
   upsertDynamicSource,
   getDynamicSourceConfig,
@@ -14,10 +13,10 @@ vi.mock("@/mcp/registry", async (importOriginal) => {
   >();
   return {
     ...actual,
-    listDataSources: vi.fn(() => [
-      { id: "postgres", name: "PostgreSQL 分析库", kind: "postgres", tools: [], enabled: true, builtin: true },
-      { id: "gitlab-mcp", name: "GitLab MCP (外部)", kind: "gitlab-mcp", tools: [], enabled: true, builtin: true },
-      { id: "zentao-cli", name: "ZenTao 禅道 CLI MCP (本地)", kind: "zentao-cli", tools: [], enabled: true, builtin: true },
+listDataSources: vi.fn(() => [
+      { id: "pg-a", name: "PostgreSQL 分析库", kind: "db", dbType: "postgres", tools: [], enabled: true },
+      { id: "zentao-cli", name: "禅道", kind: "stdio-cli", command: "zentao", tools: [], enabled: true },
+      { id: "gitlab", name: "GitLab MCP", kind: "http-mcp", tools: [], enabled: true },
     ]),
     checkDataSourceHealth: vi.fn(async () => ({ ok: true, latencyMs: 5 })),
     upsertDynamicSource: vi.fn(),
@@ -33,56 +32,23 @@ describe("GET /api/datasources", () => {
   });
 
   it("返回所有数据源与健康状态", async () => {
-    const res = await GET(new Request(BASE));
+    const res = await GET();
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.sources).toHaveLength(3);
-    expect(body.health.postgres.ok).toBe(true);
-    expect(body.health["gitlab-mcp"].ok).toBe(true);
-  });
-
-  it("gitlab-mcp 探活透传请求头中的 gitlabUrl 与 gitlabToken", async () => {
-    await GET(
-      new Request(BASE, {
-        headers: {
-          "x-gitlab-url": "http://10.0.0.9:5002/mcp",
-          "x-gitlab-token": "glpat-test",
-        },
-      })
-    );
-
-    expect(checkDataSourceHealth).toHaveBeenCalledWith("gitlab-mcp", {
-      gitlabUrl: "http://10.0.0.9:5002/mcp",
-      gitlabToken: "glpat-test",
-    });
-    // 其他源不携带 gitlab 配置
-    expect(checkDataSourceHealth).toHaveBeenCalledWith("postgres", undefined);
-  });
-
-  it("URL query 中的 token 不被读取（防访问日志泄漏）", async () => {
-    await GET(
-      new Request(
-        `${BASE}?gitlabToken=glpat-should-ignore&gitlabUrl=http://evil.example/mcp`
-      )
-    );
-
-    // query 中的配置被忽略，探针收到 undefined（回落服务端默认）
-    expect(checkDataSourceHealth).toHaveBeenCalledWith("gitlab-mcp", {
-      gitlabUrl: undefined,
-      gitlabToken: undefined,
-    });
+    expect(body.health["pg-a"].ok).toBe(true);
+    expect(body.health["zentao-cli"].ok).toBe(true);
   });
 
   it("动态源响应不泄露 token 明文与连接串密码", async () => {
     vi.mocked(listDataSources).mockReturnValueOnce([
-      { id: "postgres", name: "PostgreSQL 分析库", kind: "postgres", tools: [], enabled: true, builtin: true },
+      { id: "pg-a", name: "PostgreSQL 分析库", kind: "db", dbType: "postgres", tools: [], enabled: true },
       {
         id: "jira",
         name: "Jira MCP",
         kind: "http-mcp",
         tools: [],
         enabled: true,
-        builtin: false,
         hasToken: true,
         maskedUrl: "http://10.0.0.1:6000/mcp",
       },
@@ -92,13 +58,12 @@ describe("GET /api/datasources", () => {
         kind: "db",
         tools: [],
         enabled: true,
-        builtin: false,
         dbType: "mysql",
         maskedConnectionString: "mysql://u:***@h:3306/db",
       },
     ]);
 
-    const res = await GET(new Request(BASE));
+    const res = await GET();
     const raw = JSON.stringify(await res.json());
 
     expect(raw).not.toContain("glpat-secret");

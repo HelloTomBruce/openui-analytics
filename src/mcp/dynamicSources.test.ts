@@ -8,6 +8,10 @@ vi.mock("./httpMcp", () => ({
   connectHttpMcp: vi.fn(),
 }));
 
+vi.mock("./stdioMcp", () => ({
+  connectStdioMcp: vi.fn(),
+}));
+
 // 只 mock DIALECTS：dbMcpServer 保持真实实现，经 InMemoryTransport 走完整 MCP 协议
 vi.mock("./db/dialect", () => ({
   DIALECTS: {
@@ -17,6 +21,7 @@ vi.mock("./db/dialect", () => ({
 }));
 
 import { connectHttpMcp } from "./httpMcp";
+import { connectStdioMcp } from "./stdioMcp";
 import { DIALECTS } from "./db/dialect";
 import { reloadDataSources } from "./registry";
 
@@ -68,6 +73,15 @@ const DB_SOURCE = {
   kind: "db" as const,
   dbType: "mysql" as const,
   connectionString: "mysql://u:p@h:3306/orders",
+  enabled: true,
+};
+
+const STDIO_SOURCE = {
+  id: "zc",
+  name: "禅道",
+  kind: "stdio-cli" as const,
+  command: "zentao",
+  args: ["mcp", "--read-only"],
   enabled: true,
 };
 
@@ -143,6 +157,33 @@ describe("dynamicSources 装配器", () => {
       "openui-dynamic-jira",
       "http://10.0.0.2/mcp",
       { Authorization: "Bearer tk" }
+    );
+  });
+
+  it("stdio-cli 源经 StdioClientTransport 装载并带 id 前缀，args 变更重建连接", async () => {
+    const clientA = makeFakeMcpClient("zentao_bug");
+    const clientB = makeFakeMcpClient("zentao_bug");
+    vi.mocked(connectStdioMcp)
+      .mockResolvedValueOnce(clientA as never)
+      .mockResolvedValueOnce(clientB as never);
+    const { getDynamicSourceTools } = await importFreshModule();
+
+    const tools = await getDynamicSourceTools(STDIO_SOURCE);
+
+    expect(connectStdioMcp).toHaveBeenCalledWith(
+      "openui-dynamic-zc",
+      "zentao",
+      ["mcp", "--read-only"]
+    );
+    expect(Object.keys(tools)).toEqual(["zc_zentao_bug"]);
+
+    // args 变更 → 旧连接关闭、以新 args 重建
+    await getDynamicSourceTools({ ...STDIO_SOURCE, args: ["mcp"] });
+    expect(clientA.close).toHaveBeenCalledTimes(1);
+    expect(connectStdioMcp).toHaveBeenLastCalledWith(
+      "openui-dynamic-zc",
+      "zentao",
+      ["mcp"]
     );
   });
 

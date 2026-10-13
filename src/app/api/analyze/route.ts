@@ -1,11 +1,8 @@
 import { streamText, tool, jsonSchema, type CoreTool } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
 import { getOpenUISystemPrompt } from "@/lib/prompt";
-import { getPostgresAiTools, getGitLabAiTools } from "@/mcp/mcpClient";
-import { getZentaoAiTools } from "@/mcp/zentaoMcpClient";
 import { getCrossSourceLinks } from "@/lib/crossSourceMap";
 import {
-  BUILTIN_SOURCE_IDS,
   readDatasourcesConfig,
   resolveActiveSources,
   getDynamicSourceConfig,
@@ -20,8 +17,6 @@ export async function POST(req: Request) {
       apiKey: clientKey,
       baseURL: clientBaseURL,
       model: clientModel,
-      gitlabToken: clientGitLabToken,
-      gitlabUrl: clientGitLabUrl,
       temperature: clientTemperature,
       sources: clientSources,
     } = await req.json();
@@ -72,26 +67,12 @@ export async function POST(req: Request) {
       Array.isArray(clientSources) ? (clientSources as string[]) : undefined,
       cfg
     );
-    const activeIds = new Set(activeSources.map((s) => s.id));
 
     // 按激活源装配工具：内置三源 + 动态源（http-mcp / db）；
     // 单一数据源失败时降级为空工具集而非拖垮整个请求
     const toolEntries: { id: string; tools: Promise<Record<string, CoreTool>> }[] =
       [];
-    if (activeIds.has("postgres")) {
-      toolEntries.push({ id: "postgres", tools: getPostgresAiTools() });
-    }
-    if (activeIds.has("gitlab-mcp")) {
-      toolEntries.push({
-        id: "gitlab-mcp",
-        tools: getGitLabAiTools(clientGitLabUrl, clientGitLabToken),
-      });
-    }
-    if (activeIds.has("zentao-cli")) {
-      toolEntries.push({ id: "zentao-cli", tools: getZentaoAiTools() });
-    }
     for (const s of activeSources) {
-      if ((BUILTIN_SOURCE_IDS as readonly string[]).includes(s.id)) continue;
       const conf = getDynamicSourceConfig(s.id);
       if (!conf) continue;
       toolEntries.push({ id: s.id, tools: getDynamicSourceTools(conf) });
@@ -114,7 +95,6 @@ export async function POST(req: Request) {
 
     // prompt 数据源清单：动态源写入实际装载到的工具名
     const summaries: ActiveSourceSummary[] = activeSources.map((s) => {
-      if ((BUILTIN_SOURCE_IDS as readonly string[]).includes(s.id)) return s;
       const idx = toolEntries.findIndex((e) => e.id === s.id);
       const settled = idx >= 0 ? settledResults[idx] : undefined;
       return settled?.status === "fulfilled"
