@@ -81,4 +81,43 @@ describe("POST /api/analyze", () => {
     expect(text.startsWith("3:")).toBe(false);
     expect(streamText).toHaveBeenCalledTimes(1);
   });
+
+  it("客户端提供 baseURL 但未提供 apiKey 时拒绝（防服务端 env 凭证外泄）", async () => {
+    // 模拟服务端配置了 env key
+    process.env.OPENAI_API_KEY = "server-secret-key";
+
+    const res = await POST(
+      makeRequest({
+        messages: [],
+        baseURL: "http://attacker.example/v1",
+      })
+    );
+
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toContain("apiKey");
+    expect(streamText).not.toHaveBeenCalled();
+  });
+
+  it("客户端 baseURL 与 apiKey 配对提供时正常放行", async () => {
+    process.env.OPENAI_API_KEY = "server-secret-key";
+    vi.mocked(getGitLabAiTools).mockResolvedValue({});
+    vi.mocked(streamText).mockReturnValue({
+      toDataStreamResponse: () =>
+        new Response('0:"ok"\n', {
+          headers: { "x-vercel-ai-data-stream": "v1" },
+        }),
+    } as unknown as ReturnType<typeof streamText>);
+
+    const res = await POST(
+      makeRequest({
+        messages: [],
+        baseURL: "http://my-llm.example/v1",
+        apiKey: "client-own-key",
+      })
+    );
+
+    expect(res.status).toBe(200);
+    expect(streamText).toHaveBeenCalledTimes(1);
+  });
 });

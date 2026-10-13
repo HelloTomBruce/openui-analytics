@@ -63,5 +63,14 @@ pnpm run build    # 生产构建
 
 ## 安全说明
 
-- `execute_sql` 仅允许 `SELECT` / `WITH` 只读查询，禁止多语句与 DDL/DML 关键字，默认追加 `LIMIT 200`。
+- `execute_sql` 仅允许 `SELECT` / `WITH` 只读查询，禁止多语句与 DDL/DML 关键字，默认追加 `LIMIT 200`；执行层强制只读事务 + 5s `statement_timeout` 作为硬约束。
 - 任一 MCP 数据源加载失败时自动降级为空工具集，不会拖垮整个分析请求。
+- 凭证边界：客户端在「LLM 设置」中自定义 baseURL 时必须同时提供自己的 apiKey，服务端不会用环境变量中的 Key 去请求客户端指定的 URL（防凭证外泄）。GitLab token 通过自定义请求头传递，不进入 URL。
+
+### 部署注意事项
+
+本项目默认面向本地单机使用。部署到共享环境前请务必：
+
+1. 配置 `OPENUI_API_AUTH_TOKEN` 启用 API 鉴权（见环境变量章节）；
+2. 为 PostgreSQL 连接使用**只读角色**（应用层守卫之外的第二道防线）；
+3. 限制可访问的 GitLab MCP endpoint 范围（SSRF 面）。

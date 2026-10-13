@@ -22,6 +22,15 @@ export async function POST(req: Request) {
 
     console.log("[Analyze API Request]", { model, baseURL, hasApiKey: !!apiKey });
 
+    // 安全约束：客户端自带 baseURL 时必须同时自带 apiKey。
+    // 否则服务端会拿着 env 中的真实 Key 去请求客户端指定的任意 URL —— 凭证外泄通道。
+    if (clientBaseURL && !clientKey) {
+      return Response.json(
+        { error: "自定义 baseURL 时必须同时提供 apiKey（不允许与服务端环境凭证混用）" },
+        { status: 400 }
+      );
+    }
+
     // 当未配置 Key 时，返回合规的 Data Stream 协议响应
     if (!apiKey) {
       const msg = `⚠️ 请先在右上角「LLM 设置」中配置您的 API Key。\n\n\`\`\`openui\nInsightBox(type="warning", title="未检测到 LLM API Key", content="请点击右上角「LLM 设置」输入 API Key，开启由 Vercel AI SDK + PostgreSQL, GitLab & ZenTao MCP 驱动的流式数据分析看板。")\n\`\`\``;
