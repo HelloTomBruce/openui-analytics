@@ -120,4 +120,33 @@ describe("POST /api/analyze", () => {
     expect(res.status).toBe(200);
     expect(streamText).toHaveBeenCalledTimes(1);
   });
+
+  it("temperature 越界时钳制到 0–2", async () => {
+    vi.mocked(getGitLabAiTools).mockResolvedValue({});
+    vi.mocked(streamText).mockReturnValue({
+      toDataStreamResponse: () =>
+        new Response('0:"ok"\n', {
+          headers: { "x-vercel-ai-data-stream": "v1" },
+        }),
+    } as unknown as ReturnType<typeof streamText>);
+
+    await POST(makeRequest({ messages: [], apiKey: "k", temperature: 5 }));
+    expect(vi.mocked(streamText).mock.calls[0][0]).toMatchObject({ temperature: 2 });
+
+    await POST(makeRequest({ messages: [], apiKey: "k", temperature: -1 }));
+    expect(vi.mocked(streamText).mock.calls[1][0]).toMatchObject({ temperature: 0 });
+  });
+
+  it("未提供 temperature 时默认 0.2", async () => {
+    vi.mocked(getGitLabAiTools).mockResolvedValue({});
+    vi.mocked(streamText).mockReturnValue({
+      toDataStreamResponse: () =>
+        new Response('0:"ok"\n', {
+          headers: { "x-vercel-ai-data-stream": "v1" },
+        }),
+    } as unknown as ReturnType<typeof streamText>);
+
+    await POST(makeRequest({ messages: [], apiKey: "k" }));
+    expect(vi.mocked(streamText).mock.calls[0][0]).toMatchObject({ temperature: 0.2 });
+  });
 });

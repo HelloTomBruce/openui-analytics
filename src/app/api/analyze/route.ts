@@ -14,11 +14,18 @@ export async function POST(req: Request) {
       model: clientModel,
       gitlabToken: clientGitLabToken,
       gitlabUrl: clientGitLabUrl,
+      temperature: clientTemperature,
     } = await req.json();
 
     const apiKey = clientKey || process.env.OPENAI_API_KEY || process.env.LLM_API_KEY;
     const baseURL = clientBaseURL || process.env.OPENAI_BASE_URL || process.env.LLM_BASE_URL || "https://api.openai.com/v1";
     const model = clientModel || process.env.OPENAI_MODEL || process.env.LLM_MODEL || "gpt-4o-mini";
+    // 温度由客户端设置页透传，钳制在 0–2，默认 0.2（数据分析场景）
+    const parsedTemp = Number(clientTemperature);
+    const temperature =
+      Number.isFinite(parsedTemp) && clientTemperature !== undefined && clientTemperature !== ""
+        ? Math.min(Math.max(parsedTemp, 0), 2)
+        : 0.2;
 
     console.log("[Analyze API Request]", { model, baseURL, hasApiKey: !!apiKey });
 
@@ -74,7 +81,7 @@ export async function POST(req: Request) {
       model: openai(model),
       system: getOpenUISystemPrompt(),
       messages,
-      temperature: 1,
+      temperature,
       tools: {
         ...postgresTools,
         cross_source_link: tool({

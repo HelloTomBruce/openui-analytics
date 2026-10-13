@@ -35,12 +35,14 @@ interface SettingsModalProps {
   gitlabToken: string;
   gitlabUrl: string;
   accessToken: string;
+  temperature: string;
   onApiKeyChange: (v: string) => void;
   onBaseURLChange: (v: string) => void;
   onModelChange: (v: string) => void;
   onGitlabTokenChange: (v: string) => void;
   onGitlabUrlChange: (v: string) => void;
   onAccessTokenChange: (v: string) => void;
+  onTemperatureChange: (v: string) => void;
   onSave: () => void;
   onClose: () => void;
 }
@@ -52,12 +54,14 @@ export function SettingsModal({
   gitlabToken,
   gitlabUrl,
   accessToken,
+  temperature,
   onApiKeyChange,
   onBaseURLChange,
   onModelChange,
   onGitlabTokenChange,
   onGitlabUrlChange,
   onAccessTokenChange,
+  onTemperatureChange,
   onSave,
   onClose,
 }: SettingsModalProps) {
@@ -133,6 +137,22 @@ export function SettingsModal({
               onChange={(e) => onModelChange(e.target.value)}
               placeholder="gpt-4o-mini / deepseek-chat"
               className="w-full p-2.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 font-mono"
+            />
+          </div>
+
+          <div>
+            <label className="block text-slate-500 mb-1 font-medium flex items-center justify-between">
+              <span>Temperature（0–2，数据分析建议 0.2）</span>
+              <span className="font-mono text-slate-400">{temperature}</span>
+            </label>
+            <input
+              type="range"
+              min="0"
+              max="2"
+              step="0.1"
+              value={temperature}
+              onChange={(e) => onTemperatureChange(e.target.value)}
+              className="w-full accent-blue-600"
             />
           </div>
 

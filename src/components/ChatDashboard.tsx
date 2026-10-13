@@ -39,6 +39,8 @@ export default function ChatDashboard() {
     setGitlabUrl,
     accessToken,
     setAccessToken,
+    temperature,
+    setTemperature,
     authHeaders,
     saveSettings,
     chatBody,
@@ -241,12 +243,14 @@ export default function ChatDashboard() {
           gitlabToken={gitlabToken}
           gitlabUrl={gitlabUrl}
           accessToken={accessToken}
+          temperature={temperature}
           onApiKeyChange={setApiKey}
           onBaseURLChange={setBaseURL}
           onModelChange={setModel}
           onGitlabTokenChange={setGitlabToken}
           onGitlabUrlChange={setGitlabUrl}
           onAccessTokenChange={setAccessToken}
+          onTemperatureChange={setTemperature}
           onSave={saveSettings}
           onClose={() => setShowSettings(false)}
         />

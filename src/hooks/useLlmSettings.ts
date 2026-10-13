@@ -9,11 +9,13 @@ const STORAGE_KEYS = {
   model: "openui_llm_model",
   gitlabToken: "openui_gitlab_token",
   gitlabUrl: "openui_gitlab_url",
+  temperature: "openui_llm_temperature",
 } as const;
 
 const DEFAULT_BASE_URL = "https://api.openai.com/v1";
 const DEFAULT_MODEL = "gpt-4o-mini";
 const DEFAULT_GITLAB_URL = "http://127.0.0.1:5002/mcp";
+const DEFAULT_TEMPERATURE = "0.2";
 
 function readStored(key: string, fallback: string): string {
   if (typeof window !== "undefined") {
@@ -42,6 +44,9 @@ export function useLlmSettings() {
   const [accessToken, setAccessToken] = useState(() =>
     readStored(ACCESS_TOKEN_STORAGE_KEY, "")
   );
+  const [temperature, setTemperature] = useState(() =>
+    readStored(STORAGE_KEYS.temperature, DEFAULT_TEMPERATURE)
+  );
 
   const saveSettings = () => {
     localStorage.setItem(STORAGE_KEYS.apiKey, apiKey);
@@ -49,6 +54,7 @@ export function useLlmSettings() {
     localStorage.setItem(STORAGE_KEYS.model, model);
     localStorage.setItem(STORAGE_KEYS.gitlabToken, gitlabToken);
     localStorage.setItem(STORAGE_KEYS.gitlabUrl, gitlabUrl);
+    localStorage.setItem(STORAGE_KEYS.temperature, temperature);
     localStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, accessToken);
     setShowSettings(false);
   };
@@ -60,8 +66,9 @@ export function useLlmSettings() {
       model: model.trim() || undefined,
       gitlabToken: gitlabToken.trim() || undefined,
       gitlabUrl: gitlabUrl.trim() || undefined,
+      temperature: temperature.trim() || undefined,
     }),
-    [apiKey, baseURL, model, gitlabToken, gitlabUrl]
+    [apiKey, baseURL, model, gitlabToken, gitlabUrl, temperature]
   );
 
   return {
@@ -79,6 +86,8 @@ export function useLlmSettings() {
     setGitlabUrl,
     accessToken,
     setAccessToken,
+    temperature,
+    setTemperature,
     authHeaders,
     saveSettings,
     chatBody,
