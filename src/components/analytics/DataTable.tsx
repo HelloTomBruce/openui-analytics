@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { Search, ArrowUpDown, Download } from "lucide-react";
 import { toCsvContent, downloadCsv } from "@/lib/csv";
 import { parseArrayProp } from "@/lib/parseProp";
@@ -30,42 +30,54 @@ export const DataTable: React.FC<DataTableProps> = ({
   const [sortAsc, setSortAsc] = useState(true);
 
   // 安全容错：确保 data 与 columns 始终为有效数组且元素为非空对象
-  const safeData: Array<Record<string, unknown>> = parseArrayProp(data);
+  const safeData: Array<Record<string, unknown>> = useMemo(() => parseArrayProp(data), [data]);
 
-  let safeColumns: ColumnConfig[] = parseArrayProp(columns).filter(
-    (c) => typeof c.key === "string"
-  ) as unknown as ColumnConfig[];
+  const safeColumns: ColumnConfig[] = useMemo(() => {
+    let cols = parseArrayProp(columns).filter(
+      (c) => typeof c.key === "string"
+    ) as unknown as ColumnConfig[];
 
-  // 若未指定 columns，自动根据数据行推断表头
-  if (safeColumns.length === 0 && safeData.length > 0 && safeData[0] && typeof safeData[0] === "object") {
-    safeColumns = Object.keys(safeData[0]).map((k) => ({
-      key: k,
-      header: k,
-    }));
-  }
-
-  const filteredData = safeData.filter((row) => {
-    if (!row || typeof row !== "object") return false;
-    if (!searchTerm) return true;
-    return Object.values(row).some((val) =>
-      val != null && String(val).toLowerCase().includes(searchTerm.toLowerCase())
-    );
-  });
-
-  const sortedData = [...filteredData].sort((a, b) => {
-    if (!sortKey) return 0;
-    const aVal = a[sortKey];
-    const bVal = b[sortKey];
-    if (aVal === bVal) return 0;
-    if (aVal == null) return sortAsc ? 1 : -1;
-    if (bVal == null) return sortAsc ? -1 : 1;
-    if (typeof aVal === "number" && typeof bVal === "number") {
-      return sortAsc ? aVal - bVal : bVal - aVal;
+    // 若未指定 columns，自动根据数据行推断表头
+    if (cols.length === 0 && safeData.length > 0 && safeData[0] && typeof safeData[0] === "object") {
+      cols = Object.keys(safeData[0]).map((k) => ({
+        key: k,
+        header: k,
+      }));
     }
-    const aStr = String(aVal);
-    const bStr = String(bVal);
-    return sortAsc ? aStr.localeCompare(bStr) : bStr.localeCompare(aStr);
-  });
+    return cols;
+  }, [columns, safeData]);
+
+  // 搜索/排序派生数据 memo 化：仅当输入变化时重算，避免每次渲染全表排序
+  const filteredData = useMemo(
+    () =>
+      safeData.filter((row) => {
+        if (!row || typeof row !== "object") return false;
+        if (!searchTerm) return true;
+        return Object.values(row).some((val) =>
+          val != null && String(val).toLowerCase().includes(searchTerm.toLowerCase())
+        );
+      }),
+    [safeData, searchTerm]
+  );
+
+  const sortedData = useMemo(
+    () =>
+      [...filteredData].sort((a, b) => {
+        if (!sortKey) return 0;
+        const aVal = a[sortKey];
+        const bVal = b[sortKey];
+        if (aVal === bVal) return 0;
+        if (aVal == null) return sortAsc ? 1 : -1;
+        if (bVal == null) return sortAsc ? -1 : 1;
+        if (typeof aVal === "number" && typeof bVal === "number") {
+          return sortAsc ? aVal - bVal : bVal - aVal;
+        }
+        const aStr = String(aVal);
+        const bStr = String(bVal);
+        return sortAsc ? aStr.localeCompare(bStr) : bStr.localeCompare(aStr);
+      }),
+    [filteredData, sortKey, sortAsc]
+  );
 
   const handleSort = (key: string) => {
     if (sortKey === key) {

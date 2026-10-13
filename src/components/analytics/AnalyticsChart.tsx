@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useMemo } from "react";
 import {
   ResponsiveContainer,
   LineChart,
@@ -55,33 +55,36 @@ export const AnalyticsChart: React.FC<AnalyticsChartProps> = ({
   height = 280,
 }) => {
   // 安全容错：确保 data 与 series 始终为有效数组且元素为非空对象
-  const safeData: Array<Record<string, unknown>> = parseArrayProp(data);
+  const safeData: Array<Record<string, unknown>> = useMemo(() => parseArrayProp(data), [data]);
 
-  let safeSeries: SeriesConfig[] = parseArrayProp(series).filter(
-    (s) => typeof s.key === "string"
-  ) as unknown as SeriesConfig[];
+  const safeSeries: SeriesConfig[] = useMemo(() => {
+    let s = parseArrayProp(series).filter(
+      (item) => typeof item.key === "string"
+    ) as unknown as SeriesConfig[];
 
-  // 如果没有传递 series，但 data 中有字段，自动提取数值字段作为默认序列
-  if (safeSeries.length === 0 && safeData.length > 0 && safeData[0] && typeof safeData[0] === "object") {
-    const firstRow = safeData[0];
-    const candidateKeys = Object.keys(firstRow).filter(
-      (k) => k !== xAxisKey && typeof firstRow[k] === "number"
-    );
-    if (candidateKeys.length > 0) {
-      safeSeries = candidateKeys.map((k, idx) => ({
-        key: k,
-        label: k,
-        color: DEFAULT_COLORS[idx % DEFAULT_COLORS.length],
-      }));
-    } else {
-      const remainingKeys = Object.keys(firstRow).filter((k) => k !== xAxisKey);
-      safeSeries = remainingKeys.map((k, idx) => ({
-        key: k,
-        label: k,
-        color: DEFAULT_COLORS[idx % DEFAULT_COLORS.length],
-      }));
+    // 如果没有传递 series，但 data 中有字段，自动提取数值字段作为默认序列
+    if (s.length === 0 && safeData.length > 0 && safeData[0] && typeof safeData[0] === "object") {
+      const firstRow = safeData[0];
+      const candidateKeys = Object.keys(firstRow).filter(
+        (k) => k !== xAxisKey && typeof firstRow[k] === "number"
+      );
+      if (candidateKeys.length > 0) {
+        s = candidateKeys.map((k, idx) => ({
+          key: k,
+          label: k,
+          color: DEFAULT_COLORS[idx % DEFAULT_COLORS.length],
+        }));
+      } else {
+        const remainingKeys = Object.keys(firstRow).filter((k) => k !== xAxisKey);
+        s = remainingKeys.map((k, idx) => ({
+          key: k,
+          label: k,
+          color: DEFAULT_COLORS[idx % DEFAULT_COLORS.length],
+        }));
+      }
     }
-  }
+    return s;
+  }, [series, safeData, xAxisKey]);
 
   return (
     <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 shadow-xs">
