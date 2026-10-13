@@ -15,6 +15,7 @@ import {
   setBuiltinEnabled,
   maskConnectionString,
   maskUrl,
+  resolveActiveSources,
 } from "./registry";
 import { getGitLabMcpClient } from "./mcpClient";
 
@@ -298,6 +299,51 @@ describe("配置模型 v2", () => {
 
   it("maskUrl 去掉 query 与 userinfo", () => {
     expect(maskUrl("http://u:p@h:7002/mcp?x=1")).toBe("http://h:7002/mcp");
+  });
+});
+
+describe("resolveActiveSources", () => {
+  const CFG = {
+    builtin: {
+      postgres: { enabled: true },
+      "gitlab-mcp": { enabled: false },
+      "zentao-cli": { enabled: true },
+    },
+    sources: [
+      {
+        id: "jira",
+        name: "Jira MCP",
+        kind: "http-mcp" as const,
+        url: "http://10.0.0.1:6000/mcp",
+        token: "",
+        enabled: true,
+      },
+    ],
+  };
+
+  it("未指定时返回全部启用源（内置按 enabled 过滤）", () => {
+    const active = resolveActiveSources(undefined, CFG);
+    expect(active.map((s) => s.id).sort()).toEqual([
+      "jira",
+      "postgres",
+      "zentao-cli",
+    ]);
+  });
+
+  it("指定列表与全局启用取交集：禁用源被滤掉", () => {
+    const active = resolveActiveSources(
+      ["postgres", "gitlab-mcp"],
+      CFG
+    );
+    expect(active.map((s) => s.id)).toEqual(["postgres"]);
+  });
+
+  it("未知 id 忽略并告警，不抛错", () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const active = resolveActiveSources(["nope"], CFG);
+    expect(active).toEqual([]);
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("nope"));
+    warnSpy.mockRestore();
   });
 });
 

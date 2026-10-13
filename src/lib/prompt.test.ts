@@ -1,19 +1,35 @@
+// @vitest-environment node
 import { describe, it, expect } from "vitest";
 import { getOpenUISystemPrompt } from "./prompt";
+import type { ActiveSourceSummary } from "@/mcp/registry";
 
-describe("getOpenUISystemPrompt", () => {
-  const prompt = getOpenUISystemPrompt();
-
-  it("包含禅道与 GitLab 数据源指引", () => {
-    expect(prompt).toContain("zentao_bug");
-    expect(prompt.toLowerCase()).toContain("gitlab");
+describe("getOpenUISystemPrompt 动态数据源段", () => {
+  it("无参时保留三内置源与跨源映射段（守护现有行为）", () => {
+    const prompt = getOpenUISystemPrompt();
+    expect(prompt).toContain("PostgreSQL Analytics Database");
+    expect(prompt).toContain("GitLab Repository");
+    expect(prompt).toContain("ZenTao 禅道");
+    expect(prompt).toContain("cross_source_link");
   });
 
-  it("不再包含旧营销示例", () => {
-    expect(prompt).not.toContain("TikTok Ads 实时预算与投产测试器");
-  });
+  it("仅激活动态源时过滤未激活内置段并列出动态源", () => {
+    const active: ActiveSourceSummary[] = [
+      {
+        id: "mysql-orders",
+        name: "订单库",
+        kind: "db",
+        dbType: "mysql",
+        tools: ["execute_sql"],
+      },
+    ];
 
-  it("包含研发效能新示例标识", () => {
-    expect(prompt).toContain("迭代缺陷收敛漏斗");
+    const prompt = getOpenUISystemPrompt(active);
+
+    expect(prompt).toContain("订单库");
+    expect(prompt).toContain("execute_sql");
+    expect(prompt).not.toContain("ZenTao 禅道");
+    expect(prompt).not.toContain("PostgreSQL Analytics Database");
+    // cross_source_link 工具常挂，说明段保留
+    expect(prompt).toContain("cross_source_link");
   });
 });

@@ -1,9 +1,17 @@
-import { streamText, tool, jsonSchema } from "ai";
+import { streamText, tool, jsonSchema, type CoreTool } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
 import { getOpenUISystemPrompt } from "@/lib/prompt";
 import { getPostgresAiTools, getGitLabAiTools } from "@/mcp/mcpClient";
 import { getZentaoAiTools } from "@/mcp/zentaoMcpClient";
 import { getCrossSourceLinks } from "@/lib/crossSourceMap";
+import {
+  BUILTIN_SOURCE_IDS,
+  readDatasourcesConfig,
+  resolveActiveSources,
+  getDynamicSourceConfig,
+  type ActiveSourceSummary,
+} from "@/mcp/registry";
+import { getDynamicSourceTools, mergeToolSets } from "@/mcp/dynamicSources";
 
 export async function POST(req: Request) {
   try {
@@ -15,6 +23,7 @@ export async function POST(req: Request) {
       gitlabToken: clientGitLabToken,
       gitlabUrl: clientGitLabUrl,
       temperature: clientTemperature,
+      sources: clientSources,
     } = await req.json();
 
     const apiKey = clientKey || process.env.OPENAI_API_KEY || process.env.LLM_API_KEY;
@@ -57,33 +66,69 @@ export async function POST(req: Request) {
       baseURL: baseURL.replace(/\/+$/, ""),
     });
 
-    // 动态发现 PostgreSQL（进程内 MCP）、GitLab MCP 与 ZenTao MCP 工具；
+    // 会话级数据源：请求 id ∩ 全局启用 ∩ 实际存在；未知 id 忽略并告警
+    const cfg = readDatasourcesConfig();
+    const activeSources = resolveActiveSources(
+      Array.isArray(clientSources) ? (clientSources as string[]) : undefined,
+      cfg
+    );
+    const activeIds = new Set(activeSources.map((s) => s.id));
+
+    // 按激活源装配工具：内置三源 + 动态源（http-mcp / db）；
     // 单一数据源失败时降级为空工具集而非拖垮整个请求
-    const [postgresResult, gitlabResult, zentaoResult] = await Promise.allSettled([
-      getPostgresAiTools(),
-      getGitLabAiTools(clientGitLabUrl, clientGitLabToken),
-      getZentaoAiTools(),
-    ]);
-    if (postgresResult.status === "rejected") {
-      console.warn("[Analyze API] PostgreSQL MCP 工具加载失败，降级为空工具集:", postgresResult.reason);
+    const toolEntries: { id: string; tools: Promise<Record<string, CoreTool>> }[] =
+      [];
+    if (activeIds.has("postgres")) {
+      toolEntries.push({ id: "postgres", tools: getPostgresAiTools() });
     }
-    if (gitlabResult.status === "rejected") {
-      console.warn("[Analyze API] GitLab MCP 工具加载失败，降级为空工具集:", gitlabResult.reason);
+    if (activeIds.has("gitlab-mcp")) {
+      toolEntries.push({
+        id: "gitlab-mcp",
+        tools: getGitLabAiTools(clientGitLabUrl, clientGitLabToken),
+      });
     }
-    if (zentaoResult.status === "rejected") {
-      console.warn("[Analyze API] ZenTao MCP 工具加载失败，降级为空工具集:", zentaoResult.reason);
+    if (activeIds.has("zentao-cli")) {
+      toolEntries.push({ id: "zentao-cli", tools: getZentaoAiTools() });
     }
-    const postgresTools = postgresResult.status === "fulfilled" ? postgresResult.value : {};
-    const gitlabTools = gitlabResult.status === "fulfilled" ? gitlabResult.value : {};
-    const zentaoTools = zentaoResult.status === "fulfilled" ? zentaoResult.value : {};
+    for (const s of activeSources) {
+      if ((BUILTIN_SOURCE_IDS as readonly string[]).includes(s.id)) continue;
+      const conf = getDynamicSourceConfig(s.id);
+      if (!conf) continue;
+      toolEntries.push({ id: s.id, tools: getDynamicSourceTools(conf) });
+    }
+
+    const settledResults = await Promise.allSettled(
+      toolEntries.map((e) => e.tools)
+    );
+    const loadedTools: Record<string, CoreTool> = {};
+    settledResults.forEach((r, i) => {
+      if (r.status === "rejected") {
+        console.warn(
+          `[Analyze API] ${toolEntries[i].id} 工具加载失败，降级为空工具集:`,
+          r.reason
+        );
+        return;
+      }
+      mergeToolSets(loadedTools, r.value, toolEntries[i].id);
+    });
+
+    // prompt 数据源清单：动态源写入实际装载到的工具名
+    const summaries: ActiveSourceSummary[] = activeSources.map((s) => {
+      if ((BUILTIN_SOURCE_IDS as readonly string[]).includes(s.id)) return s;
+      const idx = toolEntries.findIndex((e) => e.id === s.id);
+      const settled = idx >= 0 ? settledResults[idx] : undefined;
+      return settled?.status === "fulfilled"
+        ? { ...s, tools: Object.keys(settled.value) }
+        : s;
+    });
 
     const result = streamText({
       model: openai(model),
-      system: getOpenUISystemPrompt(),
+      system: getOpenUISystemPrompt(summaries),
       messages,
       temperature,
       tools: {
-        ...postgresTools,
+        ...loadedTools,
         cross_source_link: tool({
           description: "查询禅道项目与 GitLab 仓库的关联映射，用于跨源联合分析（迭代进度 × 代码活跃度）。映射缺失时返回 confidence=none，此时应提示用户补充映射，不得编造关联结果。",
           parameters: jsonSchema<{ zentao_project_id: string }>({
@@ -101,8 +146,6 @@ export async function POST(req: Request) {
             return getCrossSourceLinks(zentao_project_id);
           },
         }),
-        ...gitlabTools,
-        ...zentaoTools,
       },
       maxSteps: 10,
       onStepFinish({ stepType, toolCalls, text, finishReason }) {

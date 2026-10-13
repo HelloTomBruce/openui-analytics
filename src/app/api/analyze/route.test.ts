@@ -1,8 +1,9 @@
 // @vitest-environment node
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { POST } from "./route";
-import { getGitLabAiTools } from "@/mcp/mcpClient";
+import { getGitLabAiTools, getPostgresAiTools } from "@/mcp/mcpClient";
 import { getZentaoAiTools } from "@/mcp/zentaoMcpClient";
+import { getDynamicSourceTools } from "@/mcp/dynamicSources";
 import { streamText } from "ai";
 
 vi.mock("@/mcp/mcpClient", () => ({
@@ -13,6 +14,43 @@ vi.mock("@/mcp/mcpClient", () => ({
 vi.mock("@/mcp/zentaoMcpClient", () => ({
   getZentaoAiTools: vi.fn(),
 }));
+
+vi.mock("@/mcp/dynamicSources", async (importOriginal) => {
+  const actual = await importOriginal<
+    typeof import("@/mcp/dynamicSources")
+  >();
+  return {
+    ...actual,
+    getDynamicSourceTools: vi.fn(async () => ({})),
+  };
+});
+
+const TEST_DYNAMIC_HTTP = {
+  id: "jira",
+  name: "Jira MCP",
+  kind: "http-mcp" as const,
+  url: "http://10.0.0.1:6000/mcp",
+  token: "",
+  enabled: true,
+};
+
+vi.mock("@/mcp/registry", async (importOriginal) => {
+  const actual = await importOriginal<
+    typeof import("@/mcp/registry")
+  >();
+  return {
+    ...actual,
+    readDatasourcesConfig: vi.fn(() => ({
+      builtin: {
+        postgres: { enabled: true },
+        "gitlab-mcp": { enabled: true },
+        "zentao-cli": { enabled: true },
+      },
+      sources: [TEST_DYNAMIC_HTTP],
+    })),
+    getDynamicSourceConfig: vi.fn(() => TEST_DYNAMIC_HTTP),
+  };
+});
 
 vi.mock("@ai-sdk/openai", () => ({
   createOpenAI: vi.fn(() => vi.fn()),
@@ -148,5 +186,68 @@ describe("POST /api/analyze", () => {
 
     await POST(makeRequest({ messages: [], apiKey: "k" }));
     expect(vi.mocked(streamText).mock.calls[0][0]).toMatchObject({ temperature: 0.2 });
+  });
+});
+
+describe("POST /api/analyze 会话数据源装配", () => {
+  function mockStreamOk() {
+    vi.mocked(streamText).mockReturnValue({
+      toDataStreamResponse: () =>
+        new Response('0:"ok"\n', {
+          headers: { "x-vercel-ai-data-stream": "v1" },
+        }),
+    } as unknown as ReturnType<typeof streamText>);
+  }
+
+  beforeEach(() => {
+    vi.mocked(getZentaoAiTools).mockResolvedValue({});
+    vi.mocked(getGitLabAiTools).mockResolvedValue({});
+    mockStreamOk();
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("sources 指定 postgres 时仅装载 postgres，其余内置与动态源不装载", async () => {
+    await POST(
+      makeRequest({ messages: [], apiKey: "k", sources: ["postgres"] })
+    );
+
+    expect(getPostgresAiTools).toHaveBeenCalledTimes(1);
+    expect(getGitLabAiTools).not.toHaveBeenCalled();
+    expect(getZentaoAiTools).not.toHaveBeenCalled();
+    expect(getDynamicSourceTools).not.toHaveBeenCalled();
+  });
+
+  it("sources 含动态源 id 时装载其工具并入 tools，prompt 列出该源", async () => {
+    vi.mocked(getDynamicSourceTools).mockResolvedValueOnce({
+      jira_search: { description: "d" } as never,
+    });
+
+    await POST(
+      makeRequest({ messages: [], apiKey: "k", sources: ["jira"] })
+    );
+
+    expect(getDynamicSourceTools).toHaveBeenCalledWith(TEST_DYNAMIC_HTTP);
+    const arg = vi.mocked(streamText).mock.calls[0][0];
+    expect(Object.keys(arg.tools ?? {})).toContain("jira_search");
+    expect(Object.keys(arg.tools ?? {})).toContain("cross_source_link");
+    expect(arg.system).toContain("Jira MCP");
+    expect(arg.system).not.toContain("ZenTao 禅道");
+  });
+
+  it("sources 全部未知/禁用时忽略并告警，请求仍 200", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const res = await POST(
+      makeRequest({ messages: [], apiKey: "k", sources: ["nope"] })
+    );
+
+    expect(res.status).toBe(200);
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("nope"));
+    expect(getPostgresAiTools).not.toHaveBeenCalled();
+    expect(getDynamicSourceTools).not.toHaveBeenCalled();
+    warnSpy.mockRestore();
   });
 });

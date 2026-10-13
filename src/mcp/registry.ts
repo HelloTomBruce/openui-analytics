@@ -422,6 +422,57 @@ export function listDataSources(): DataSourceDescriptor[] {
   return [...builtins, ...cfg.sources.map(describeDynamicSource)];
 }
 
+export interface ActiveSourceSummary {
+  id: string;
+  name: string;
+  kind: DataSourceDescriptor["kind"];
+  dbType?: "postgres" | "mysql";
+  tools: string[];
+}
+
+/**
+ * 会话请求的数据源 id 与「全局启用 ∩ 实际存在」取交集。
+ * 未指定（undefined）视为全选启用源；未知/禁用 id 忽略并 console.warn。
+ */
+export function resolveActiveSources(
+  requestedIds: string[] | undefined,
+  cfg: DatasourcesConfig
+): ActiveSourceSummary[] {
+  const enabled = new Map<string, ActiveSourceSummary>();
+  for (const builtin of BUILTIN_SOURCES) {
+    if (!cfg.builtin[builtin.id].enabled) continue;
+    enabled.set(builtin.id, {
+      id: builtin.id,
+      name: builtin.name,
+      kind: builtin.kind,
+      tools: builtin.tools,
+    });
+  }
+  for (const s of cfg.sources) {
+    if (!s.enabled) continue;
+    enabled.set(
+      s.id,
+      s.kind === "http-mcp"
+        ? { id: s.id, name: s.name, kind: "http-mcp", tools: [] }
+        : {
+            id: s.id,
+            name: s.name,
+            kind: "db",
+            dbType: s.dbType,
+            tools: [...DB_SOURCE_TOOLS],
+          }
+    );
+  }
+
+  if (requestedIds === undefined) return [...enabled.values()];
+  return requestedIds.flatMap((id) => {
+    const hit = enabled.get(id);
+    if (hit) return [hit];
+    console.warn(`[datasources] 忽略未知或未启用的数据源 id: ${id}`);
+    return [];
+  });
+}
+
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const timer = setTimeout(
