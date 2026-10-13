@@ -22,12 +22,12 @@ interface OpenUIRendererProps {
  * 3. 流式渐进式 Loading 指示条
  * 4. Error Boundary (全链路安全边界)
  */
-export const OpenUIRenderer: React.FC<OpenUIRendererProps> = ({
+export const OpenUIRenderer: React.FC<OpenUIRendererProps> = React.memo(function OpenUIRenderer({
   content,
   isStreaming = false,
   onAction,
   showObservabilityBadge = true,
-}) => {
+}) {
   const onActionRef = useRef(onAction);
   React.useEffect(() => {
     onActionRef.current = onAction;
@@ -102,4 +102,4 @@ export const OpenUIRenderer: React.FC<OpenUIRendererProps> = ({
       </div>
     </ErrorBoundary>
   );
-};
+});
