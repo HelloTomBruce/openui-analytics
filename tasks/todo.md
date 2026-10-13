@@ -4,7 +4,7 @@
 
 ## Phase 1: 测试基础设施
 
-### Task 1: 修复 vitest Node 环境污染
+### Task 1: 修复 vitest Node 环境污染 ✅
 **Description:** 全局 `environment: "jsdom"` 导致 import `node:fs`/`node:child_process` 的三个套件报 `No such built-in module: node:`。
 **Acceptance criteria:**
 - [ ] `crossSourceMap.test.ts`、`registry.test.ts`、`analyze/route.test.ts` 三个套件全部运行并通过
@@ -14,7 +14,7 @@
 **Files:** `src/lib/crossSourceMap.test.ts`、`src/mcp/registry.test.ts`、`src/app/api/analyze/route.test.ts`（各加 `// @vitest-environment node` docblock）
 **Size:** XS
 
-### Task 2: 修复 React production 构建解析（React.act）
+### Task 2: 修复 React production 构建解析（React.act）✅ 根因：shell `NODE_ENV=production`
 **Description:** 组件测试加载了 `react-dom-test-utils.production.js`，`React.act` 不存在。排查 vitest 条件解析，确保测试环境拿到 React development 构建。
 **Acceptance criteria:**
 - [ ] `ChatDashboard.test.tsx` 3 个用例通过
@@ -24,7 +24,7 @@
 **Files:** `vitest.config.ts`（或 `src/test/setup.ts`）
 **Size:** S（含 spike）
 
-### Task 3: 清理 lint warning 并确认三门全绿
+### Task 3: 清理 lint warning 并确认三门全绿 ✅（40/40）
 **Acceptance criteria:**
 - [ ] 删除 `src/app/api/datasources/route.test.ts:3` 未使用的 `listDataSources` import
 - [ ] `pnpm lint`、`pnpm typecheck`、`pnpm test` 均 0 错误 0 warning
@@ -32,7 +32,7 @@
 **Files:** `src/app/api/datasources/route.test.ts`
 **Size:** XS
 
-## Checkpoint 1：三门全绿（29/29），CI 恢复可信
+## Checkpoint 1：✅ 三门全绿（40/40），CI 恢复可信
 
 ## Phase 2: 数据丢失与正确性
 

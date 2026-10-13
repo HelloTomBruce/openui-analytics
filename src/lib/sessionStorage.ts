@@ -80,20 +80,17 @@ export function generateSessionTitle(firstUserContent: string): string {
 }
 
 /**
- * 创建一个全新会话
+ * 创建一个全新会话（纯工厂函数，不做持久化）。
+ * 持久化由 useSessionManager 的 useEffect 单点完成，
+ * 避免"每个操作各自记得落盘"造成的清空/删除后数据复活问题。
  */
 export function createNewSession(customTitle?: string): ChatSession {
   const now = Date.now();
-  const newSession: ChatSession = {
+  return {
     id: `session_${now}_${Math.random().toString(36).substring(2, 7)}`,
     title: customTitle || "新建分析会话",
     createdAt: now,
     updatedAt: now,
     messages: [DEFAULT_WELCOME_MESSAGE],
   };
-
-  const currentSessions = getSavedSessions();
-  persistSessions([newSession, ...currentSessions]);
-  setActiveSessionId(newSession.id);
-  return newSession;
 }

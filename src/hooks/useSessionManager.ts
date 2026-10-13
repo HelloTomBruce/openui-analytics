@@ -26,26 +26,25 @@ export type SetMessagesFn = (messages: Message[]) => void;
 export function useSessionManager(
   setMessagesRef: React.RefObject<SetMessagesFn | null>
 ) {
-  // 会话管理状态 (惰性初始化读取 localStorage)
-  const [sessions, setSessions] = useState<ChatSession[]>(() => {
+  // 会话列表与活跃会话一次性协同初始化，保证两者一致
+  // （持久化副作用已下沉到下方 useEffect 单点完成）
+  const [initialState] = useState(() => {
     if (typeof window !== "undefined") {
       const saved = getSavedSessions();
-      if (saved.length > 0) return saved;
+      if (saved.length > 0) {
+        const active = getActiveSessionId();
+        const activeId =
+          active && saved.some((s) => s.id === active) ? active : saved[0].id;
+        return { sessions: saved, activeId };
+      }
       const initial = createNewSession("营销获客与商业分析会话");
-      return [initial];
+      return { sessions: [initial], activeId: initial.id };
     }
-    return [];
+    return { sessions: [] as ChatSession[], activeId: "" };
   });
 
-  const [currentSessionId, setCurrentSessionIdState] = useState<string>(() => {
-    if (typeof window !== "undefined") {
-      const active = getActiveSessionId();
-      const saved = getSavedSessions();
-      if (active && saved.some((s) => s.id === active)) return active;
-      if (saved.length > 0) return saved[0].id;
-    }
-    return "";
-  });
+  const [sessions, setSessions] = useState<ChatSession[]>(initialState.sessions);
+  const [currentSessionId, setCurrentSessionIdState] = useState<string>(initialState.activeId);
 
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [editingTitleText, setEditingTitleText] = useState("");
@@ -55,7 +54,16 @@ export function useSessionManager(
     currentSessionIdRef.current = currentSessionId;
   }, [currentSessionId]);
 
-  // 保存消息列表到当前活跃会话
+  // 单点持久化：sessions / 活跃 id 的任何变更统一落盘，
+  // 各 handler 不再需要（也不允许）各自调用 persistSessions。
+  useEffect(() => {
+    if (sessions.length > 0) persistSessions(sessions);
+  }, [sessions]);
+  useEffect(() => {
+    if (currentSessionId) setActiveSessionId(currentSessionId);
+  }, [currentSessionId]);
+
+  // 保存消息列表到当前活跃会话（持久化由上方 effect 统一负责）
   const saveCurrentSessionMessages = useCallback((newMessages: Message[]) => {
     const activeId = currentSessionIdRef.current;
     if (!activeId || newMessages.length === 0) return;
@@ -86,7 +94,6 @@ export function useSessionManager(
       const nextSessions = [...prevSessions];
       nextSessions[sessionIndex] = updatedSession;
       nextSessions.sort((a, b) => b.updatedAt - a.updatedAt);
-      persistSessions(nextSessions);
       return nextSessions;
     });
   }, []);
@@ -114,7 +121,6 @@ export function useSessionManager(
     const newSession = createNewSession();
     setSessions((prev) => [newSession, ...prev]);
     setCurrentSessionIdState(newSession.id);
-    setActiveSessionId(newSession.id);
     setMessages(newSession.messages);
   }, [setMessages]);
 
@@ -125,7 +131,6 @@ export function useSessionManager(
       const target = sessions.find((s) => s.id === sessionId);
       if (!target) return;
       setCurrentSessionIdState(sessionId);
-      setActiveSessionId(sessionId);
       setMessages(target.messages || [DEFAULT_WELCOME_MESSAGE]);
     },
     [currentSessionId, sessions, setMessages]
@@ -139,19 +144,16 @@ export function useSessionManager(
         const fresh = createNewSession("新分析会话");
         setSessions([fresh]);
         setCurrentSessionIdState(fresh.id);
-        setActiveSessionId(fresh.id);
         setMessages(fresh.messages);
         return;
       }
 
       const nextSessions = sessions.filter((s) => s.id !== sessionId);
       setSessions(nextSessions);
-      persistSessions(nextSessions);
 
       if (currentSessionId === sessionId) {
         const nextActive = nextSessions[0];
         setCurrentSessionIdState(nextActive.id);
-        setActiveSessionId(nextActive.id);
         setMessages(nextActive.messages || [DEFAULT_WELCOME_MESSAGE]);
       }
     },
@@ -171,13 +173,11 @@ export function useSessionManager(
       setEditingSessionId(null);
       return;
     }
-    setSessions((prev) => {
-      const next = prev.map((s) =>
+    setSessions((prev) =>
+      prev.map((s) =>
         s.id === sessionId ? { ...s, title: editingTitleText.trim() } : s
-      );
-      persistSessions(next);
-      return next;
-    });
+      )
+    );
     setEditingSessionId(null);
   };
 
@@ -187,7 +187,6 @@ export function useSessionManager(
       const fresh = createNewSession("新分析会话");
       setSessions([fresh]);
       setCurrentSessionIdState(fresh.id);
-      setActiveSessionId(fresh.id);
       setMessages(fresh.messages);
     }
   };
