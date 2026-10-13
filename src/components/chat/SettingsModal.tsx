@@ -11,16 +11,16 @@ interface DataSourcesResponse {
 
 async function loadDataSources(): Promise<DataSourcesResponse | null> {
   try {
-    // 透传页面设置中的 GitLab 配置，使探活与 /api/analyze 实际使用的配置一致
-    const params = new URLSearchParams();
+    // 透传页面设置中的 GitLab 配置，使探活与 /api/analyze 实际使用的配置一致。
+    // 走自定义请求头而非 URL query，避免 token 进入访问日志/浏览器历史。
+    const headers: Record<string, string> = {};
     if (typeof window !== "undefined") {
       const gitlabUrl = localStorage.getItem("openui_gitlab_url");
       const gitlabToken = localStorage.getItem("openui_gitlab_token");
-      if (gitlabUrl) params.set("gitlabUrl", gitlabUrl);
-      if (gitlabToken) params.set("gitlabToken", gitlabToken);
+      if (gitlabUrl) headers["x-gitlab-url"] = gitlabUrl;
+      if (gitlabToken) headers["x-gitlab-token"] = gitlabToken;
     }
-    const query = params.toString();
-    const res = await fetch(`/api/datasources${query ? `?${query}` : ""}`);
+    const res = await fetch("/api/datasources", { headers });
     return (await res.json()) as DataSourcesResponse;
   } catch {
     return null;

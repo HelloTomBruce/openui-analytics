@@ -25,12 +25,15 @@ describe("GET /api/datasources", () => {
     expect(body.health["gitlab-mcp"].ok).toBe(true);
   });
 
-  it("gitlab-mcp 探活透传 query 中的 gitlabUrl 与 gitlabToken", async () => {
-    const url =
-      "http://localhost:3006/api/datasources?gitlabUrl=" +
-      encodeURIComponent("http://10.0.0.9:5002/mcp") +
-      "&gitlabToken=glpat-test";
-    await GET(new Request(url));
+  it("gitlab-mcp 探活透传请求头中的 gitlabUrl 与 gitlabToken", async () => {
+    await GET(
+      new Request("http://localhost:3006/api/datasources", {
+        headers: {
+          "x-gitlab-url": "http://10.0.0.9:5002/mcp",
+          "x-gitlab-token": "glpat-test",
+        },
+      })
+    );
 
     expect(checkDataSourceHealth).toHaveBeenCalledWith("gitlab-mcp", {
       gitlabUrl: "http://10.0.0.9:5002/mcp",
@@ -38,5 +41,19 @@ describe("GET /api/datasources", () => {
     });
     // 其他源不携带 gitlab 配置
     expect(checkDataSourceHealth).toHaveBeenCalledWith("postgres", undefined);
+  });
+
+  it("URL query 中的 token 不被读取（防访问日志泄漏）", async () => {
+    await GET(
+      new Request(
+        "http://localhost:3006/api/datasources?gitlabToken=glpat-should-ignore&gitlabUrl=http://evil.example/mcp"
+      )
+    );
+
+    // query 中的配置被忽略，探针收到 undefined（回落服务端默认）
+    expect(checkDataSourceHealth).toHaveBeenCalledWith("gitlab-mcp", {
+      gitlabUrl: undefined,
+      gitlabToken: undefined,
+    });
   });
 });
