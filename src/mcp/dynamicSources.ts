@@ -27,16 +27,19 @@ function configKey(source: DynamicSourceConfig): string {
     : JSON.stringify(["db", source.dbType, source.connectionString]);
 }
 
-/** MCP listTools 结果 → AI SDK 工具集（工具定义以 MCP Server 为唯一事实来源） */
+/** MCP listTools 结果 → AI SDK 工具集（工具定义以 MCP Server 为唯一事实来源）。
+ *  注册名加 `<id>_` 前缀：动态源与内置源（如 postgres 的 list_tables 三件套）
+ *  同契约同名时天然隔离，LLM 可按前缀明确选择目标源；MCP 侧调用仍用原始名。 */
 function mountClientTools(
   client: Pick<Client, "listTools" | "callTool">,
-  logPrefix: string
+  logPrefix: string,
+  keyPrefix: string
 ): Promise<Record<string, CoreTool>> {
   return (async () => {
     const { tools } = await client.listTools();
     const aiTools: Record<string, CoreTool> = {};
     for (const mcpTool of tools) {
-      aiTools[mcpTool.name] = tool({
+      aiTools[`${keyPrefix}${mcpTool.name}`] = tool({
         description: mcpTool.description || mcpTool.name,
         parameters: jsonSchema<Record<string, unknown>>(
           (mcpTool.inputSchema as Record<string, unknown>) || {
@@ -68,7 +71,11 @@ async function buildHttpMcpTools(
     source.url,
     headers
   );
-  const tools = await mountClientTools(client, `Dynamic ${source.id}`);
+  const tools = await mountClientTools(
+    client,
+    `Dynamic ${source.id}`,
+    `${source.id}_`
+  );
   return {
     key: configKey(source),
     tools,
@@ -97,7 +104,11 @@ async function buildDbTools(
     server.connect(serverTransport),
     mcpClient.connect(clientTransport),
   ]);
-  const tools = await mountClientTools(mcpClient, `Dynamic ${source.id}`);
+  const tools = await mountClientTools(
+    mcpClient,
+    `Dynamic ${source.id}`,
+    `${source.id}_`
+  );
   return {
     key: configKey(source),
     tools,

@@ -8,8 +8,8 @@ OpenUI Analytics 的数据源分「内置源」与「动态源」，均支持全
 
 1. **内置源**（PostgreSQL / GitLab MCP / ZenTao CLI）：行内启停开关；GitLab 行可展开配置 Endpoint / Private Token（存于浏览器 localStorage，随请求头透传，不落服务端）。
 2. **添加动态源**：
-   - **HTTP MCP**：填 `ID`、名称、`URL`（如 `http://127.0.0.1:6000/mcp`）、可选 Bearer Token。工具在连接时经 `listTools` 自动发现挂载。
-   - **数据库连接**：选数据库类型（PostgreSQL / MySQL）+ 连接串（如 `mysql://user:pass@host:3306/db`）。工具契约为 `execute_sql` / `list_tables` / `describe_table`。
+   - **HTTP MCP**：填 `ID`、名称、`URL`（如 `http://127.0.0.1:6000/mcp`）、可选 Bearer Token。工具在连接时经 `listTools` 自动发现，注册名带 `<id>_` 前缀（如 `jira_search` 注册为 `jira_jira_search`）。
+   - **数据库连接**：选数据库类型（PostgreSQL / MySQL）+ 连接串（如 `mysql://user:pass@host:3306/db`）。工具契约为 `execute_sql` / `list_tables` / `describe_table`，注册名同样带 `<id>_` 前缀（如 `zhaobiao_list_tables`）——与内置 PostgreSQL 的同名工具天然隔离，LLM 按前缀选择目标源。
 3. 凭证只在创建/更新时提交一次，后续 GET 只返回 `hasToken` 与脱敏连接串，**永不回传明文**。
 
 ## 方式二：管理 API

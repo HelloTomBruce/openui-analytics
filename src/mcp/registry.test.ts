@@ -33,7 +33,13 @@ function writeTempConfig(content: string): string {
 }
 
 describe("listDataSources", () => {
-  it("默认返回 3 个内置数据源且 id 稳定", () => {
+  afterEach(() => {
+    reloadDataSources();
+  });
+
+  it("默认返回 3 个内置数据源且 id 稳定（不依赖仓库真实配置文件）", () => {
+    // 密闭化：用空临时配置驱动，避免仓库 config/datasources.json 的真实动态源影响计数
+    reloadDataSources(writeTempConfig(JSON.stringify({ sources: [] })));
     const sources = listDataSources();
     expect(sources).toHaveLength(3);
     expect(sources.map((s) => s.id)).toEqual([

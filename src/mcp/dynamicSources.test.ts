@@ -93,8 +93,8 @@ describe("dynamicSources 装配器", () => {
       "http://10.0.0.1:6000/mcp",
       { Authorization: "Bearer tk" }
     );
-    expect(Object.keys(tools)).toEqual(["jira_search"]);
-    const out = await tools.jira_search!.execute!({ q: "x" }, {} as never);
+    expect(Object.keys(tools)).toEqual(["jira_jira_search"]);
+    const out = await tools["jira_jira_search"]!.execute!({ q: "x" }, {} as never);
     expect(out).toEqual({ rows: 1 });
     expect(fake.callTool).toHaveBeenCalledWith({
       name: "jira_search",
@@ -117,10 +117,12 @@ describe("dynamicSources 装配器", () => {
     expect(DIALECTS.mysql.connect).toHaveBeenCalledWith(
       "mysql://u:p@h:3306/orders"
     );
+    // 动态源工具带 <id>_ 前缀：与内置 postgres 的同名三件套天然隔离，
+    // LLM 可同时区分调用两个源的同契约工具
     expect(Object.keys(tools).sort()).toEqual([
-      "describe_table",
-      "execute_sql",
-      "list_tables",
+      "m1_describe_table",
+      "m1_execute_sql",
+      "m1_list_tables",
     ]);
   });
 

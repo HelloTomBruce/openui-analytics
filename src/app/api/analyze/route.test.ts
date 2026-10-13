@@ -222,7 +222,7 @@ describe("POST /api/analyze 会话数据源装配", () => {
 
   it("sources 含动态源 id 时装载其工具并入 tools，prompt 列出该源", async () => {
     vi.mocked(getDynamicSourceTools).mockResolvedValueOnce({
-      jira_search: { description: "d" } as never,
+      jira_jira_search: { description: "d" } as never,
     });
 
     await POST(
@@ -231,7 +231,7 @@ describe("POST /api/analyze 会话数据源装配", () => {
 
     expect(getDynamicSourceTools).toHaveBeenCalledWith(TEST_DYNAMIC_HTTP);
     const arg = vi.mocked(streamText).mock.calls[0][0];
-    expect(Object.keys(arg.tools ?? {})).toContain("jira_search");
+    expect(Object.keys(arg.tools ?? {})).toContain("jira_jira_search");
     expect(Object.keys(arg.tools ?? {})).toContain("cross_source_link");
     expect(arg.system).toContain("Jira MCP");
     expect(arg.system).not.toContain("ZenTao 禅道");
