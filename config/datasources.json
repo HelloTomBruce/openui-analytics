@@ -1,8 +1,14 @@
 {
   "builtin": {
-    "postgres": { "enabled": true },
-    "gitlab-mcp": { "enabled": true },
-    "zentao-cli": { "enabled": true }
+    "postgres": {
+      "enabled": true
+    },
+    "gitlab-mcp": {
+      "enabled": true
+    },
+    "zentao-cli": {
+      "enabled": true
+    }
   },
   "sources": []
 }
