@@ -2,6 +2,7 @@
 
 import React from "react";
 import { Filter, ArrowDown } from "lucide-react";
+import { parseArrayProp } from "@/lib/parseProp";
 
 export interface FunnelStage {
   name: string;
@@ -33,26 +34,12 @@ export const FunnelChart: React.FC<FunnelChartProps> = ({
   unit = "",
 }) => {
   // 安全容错：确保 stages 始终为有效数组
-  let rawStages: unknown[] = [];
-  if (Array.isArray(stages)) {
-    rawStages = stages;
-  } else if (typeof stages === "string") {
-    try {
-      const parsed = JSON.parse(stages);
-      if (Array.isArray(parsed)) rawStages = parsed;
-    } catch {
-      rawStages = [];
-    }
-  }
-
-  const safeStages: FunnelStage[] = rawStages
-    .filter((s): s is Record<string, unknown> => s != null && typeof s === "object")
-    .map((s) => ({
-      name: String(s.name || s.label || s.stage || "阶段"),
-      value: typeof s.value === "number" ? s.value : Number(s.value) || 0,
-      conversion: s.conversion ? String(s.conversion) : undefined,
-      subtext: s.subtext ? String(s.subtext) : undefined,
-    }));
+  const safeStages: FunnelStage[] = parseArrayProp(stages).map((s) => ({
+    name: String(s.name || s.label || s.stage || "阶段"),
+    value: typeof s.value === "number" ? s.value : Number(s.value) || 0,
+    conversion: s.conversion ? String(s.conversion) : undefined,
+    subtext: s.subtext ? String(s.subtext) : undefined,
+  }));
 
   if (safeStages.length === 0) {
     return (

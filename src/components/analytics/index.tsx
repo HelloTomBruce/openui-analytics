@@ -1,3 +1,5 @@
+"use client";
+
 import { defineComponent, createLibrary } from "@openuidev/react-lang";
 import { z } from "zod";
 import React from "react";

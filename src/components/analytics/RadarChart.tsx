@@ -12,6 +12,7 @@ import {
   Legend,
 } from "recharts";
 import { Compass } from "lucide-react";
+import { parseArrayProp } from "@/lib/parseProp";
 
 export interface RadarSeriesConfig {
   key: string;
@@ -44,39 +45,11 @@ export const RadarChart: React.FC<RadarChartProps> = ({
   series = [],
   height = 300,
 }) => {
-  let rawData: unknown[] = [];
-  if (Array.isArray(data)) {
-    rawData = data;
-  } else if (typeof data === "string") {
-    try {
-      const parsed = JSON.parse(data);
-      if (Array.isArray(parsed)) rawData = parsed;
-    } catch {
-      rawData = [];
-    }
-  }
+  const safeData: Array<Record<string, unknown>> = parseArrayProp(data);
 
-  const safeData: Array<Record<string, unknown>> = rawData.filter(
-    (item): item is Record<string, unknown> => item != null && typeof item === "object" && !Array.isArray(item)
-  );
-
-  let safeSeries: RadarSeriesConfig[] = [];
-  if (Array.isArray(series)) {
-    safeSeries = series.filter(
-      (s): s is RadarSeriesConfig => s != null && typeof s === "object" && typeof s.key === "string"
-    );
-  } else if (typeof series === "string") {
-    try {
-      const parsed = JSON.parse(series);
-      if (Array.isArray(parsed)) {
-        safeSeries = parsed.filter(
-          (s): s is RadarSeriesConfig => s != null && typeof s === "object" && typeof s.key === "string"
-        );
-      }
-    } catch {
-      safeSeries = [];
-    }
-  }
+  let safeSeries: RadarSeriesConfig[] = parseArrayProp(series).filter(
+    (s) => typeof s.key === "string"
+  ) as unknown as RadarSeriesConfig[];
 
   // 自动提取数值字段
   if (safeSeries.length === 0 && safeData.length > 0 && safeData[0] && typeof safeData[0] === "object") {

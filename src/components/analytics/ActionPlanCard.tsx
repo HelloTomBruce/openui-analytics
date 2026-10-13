@@ -3,6 +3,7 @@
 import React from "react";
 import { useTriggerAction } from "@openuidev/react-lang";
 import { ArrowRight, Zap } from "lucide-react";
+import { parseArrayProp } from "@/lib/parseProp";
 
 export interface ActionItem {
   title: string;
@@ -25,27 +26,13 @@ export const ActionPlanCard: React.FC<ActionPlanCardProps> = ({
 }) => {
   const triggerAction = useTriggerAction();
 
-  let rawActions: unknown[] = [];
-  if (Array.isArray(actions)) {
-    rawActions = actions;
-  } else if (typeof actions === "string") {
-    try {
-      const parsed = JSON.parse(actions);
-      if (Array.isArray(parsed)) rawActions = parsed;
-    } catch {
-      rawActions = [];
-    }
-  }
-
-  const safeActions: ActionItem[] = rawActions
-    .filter((a): a is Record<string, unknown> => a != null && typeof a === "object")
-    .map((a) => ({
-      title: String(a.title || a.name || a.desc || "待办事项"),
-      priority: (["high", "medium", "low"].includes(String(a.priority)) ? a.priority : "medium") as ActionItem["priority"],
-      impact: a.impact ? String(a.impact) : undefined,
-      owner: a.owner ? String(a.owner) : undefined,
-      status: (["todo", "in_progress", "done"].includes(String(a.status)) ? a.status : "todo") as ActionItem["status"],
-    }));
+  const safeActions: ActionItem[] = parseArrayProp(actions).map((a) => ({
+    title: String(a.title || a.name || a.desc || "待办事项"),
+    priority: (["high", "medium", "low"].includes(String(a.priority)) ? a.priority : "medium") as ActionItem["priority"],
+    impact: a.impact ? String(a.impact) : undefined,
+    owner: a.owner ? String(a.owner) : undefined,
+    status: (["todo", "in_progress", "done"].includes(String(a.status)) ? a.status : "todo") as ActionItem["status"],
+  }));
 
   const handleExecuteAction = (item: ActionItem) => {
     if (triggerAction) {

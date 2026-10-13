@@ -18,6 +18,7 @@ import {
   Tooltip,
   Legend,
 } from "recharts";
+import { parseArrayProp } from "@/lib/parseProp";
 
 export interface SeriesConfig {
   key: string;
@@ -54,39 +55,11 @@ export const AnalyticsChart: React.FC<AnalyticsChartProps> = ({
   height = 280,
 }) => {
   // 安全容错：确保 data 与 series 始终为有效数组且元素为非空对象
-  let rawData: unknown[] = [];
-  if (Array.isArray(data)) {
-    rawData = data;
-  } else if (typeof data === "string") {
-    try {
-      const parsed = JSON.parse(data);
-      if (Array.isArray(parsed)) rawData = parsed;
-    } catch {
-      rawData = [];
-    }
-  }
+  const safeData: Array<Record<string, unknown>> = parseArrayProp(data);
 
-  const safeData: Array<Record<string, unknown>> = rawData.filter(
-    (item): item is Record<string, unknown> => item != null && typeof item === "object" && !Array.isArray(item)
-  );
-
-  let safeSeries: SeriesConfig[] = [];
-  if (Array.isArray(series)) {
-    safeSeries = series.filter(
-      (s): s is SeriesConfig => s != null && typeof s === "object" && typeof s.key === "string"
-    );
-  } else if (typeof series === "string") {
-    try {
-      const parsed = JSON.parse(series);
-      if (Array.isArray(parsed)) {
-        safeSeries = parsed.filter(
-          (s): s is SeriesConfig => s != null && typeof s === "object" && typeof s.key === "string"
-        );
-      }
-    } catch {
-      safeSeries = [];
-    }
-  }
+  let safeSeries: SeriesConfig[] = parseArrayProp(series).filter(
+    (s) => typeof s.key === "string"
+  ) as unknown as SeriesConfig[];
 
   // 如果没有传递 series，但 data 中有字段，自动提取数值字段作为默认序列
   if (safeSeries.length === 0 && safeData.length > 0 && safeData[0] && typeof safeData[0] === "object") {

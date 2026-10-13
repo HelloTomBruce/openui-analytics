@@ -1,6 +1,7 @@
 "use client";
 
 import { GitCommit, CheckCircle2, AlertTriangle, XCircle, Clock } from "lucide-react";
+import { parseArrayProp } from "@/lib/parseProp";
 
 export interface TimelineItem {
   time: string;
@@ -22,28 +23,14 @@ export const ActivityTimeline: React.FC<ActivityTimelineProps> = ({
   description,
   items = [],
 }) => {
-  let rawItems: unknown[] = [];
-  if (Array.isArray(items)) {
-    rawItems = items;
-  } else if (typeof items === "string") {
-    try {
-      const parsed = JSON.parse(items);
-      if (Array.isArray(parsed)) rawItems = parsed;
-    } catch {
-      rawItems = [];
-    }
-  }
-
-  const safeItems: TimelineItem[] = rawItems
-    .filter((it): it is Record<string, unknown> => it != null && typeof it === "object")
-    .map((it) => ({
-      time: String(it.time || it.date || it.created_at || "最近"),
-      title: String(it.title || it.message || it.name || "事件记录"),
-      desc: it.desc || it.description ? String(it.desc || it.description) : undefined,
-      status: (["success", "warning", "error", "info"].includes(String(it.status)) ? it.status : "info") as TimelineItem["status"],
-      author: it.author || it.author_name ? String(it.author || it.author_name) : undefined,
-      tag: it.tag ? String(it.tag) : undefined,
-    }));
+  const safeItems: TimelineItem[] = parseArrayProp(items).map((it) => ({
+    time: String(it.time || it.date || it.created_at || "最近"),
+    title: String(it.title || it.message || it.name || "事件记录"),
+    desc: it.desc || it.description ? String(it.desc || it.description) : undefined,
+    status: (["success", "warning", "error", "info"].includes(String(it.status)) ? it.status : "info") as TimelineItem["status"],
+    author: it.author || it.author_name ? String(it.author || it.author_name) : undefined,
+    tag: it.tag ? String(it.tag) : undefined,
+  }));
 
   const statusIcons = {
     success: <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />,

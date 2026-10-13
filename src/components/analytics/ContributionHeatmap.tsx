@@ -2,6 +2,7 @@
 
 import React from "react";
 import { Flame } from "lucide-react";
+import { parseArrayProp } from "@/lib/parseProp";
 
 export interface HeatmapDataPoint {
   date?: string;
@@ -23,26 +24,12 @@ export const ContributionHeatmap: React.FC<ContributionHeatmapProps> = ({
   data = [],
   color = "green",
 }) => {
-  let rawData: unknown[] = [];
-  if (Array.isArray(data)) {
-    rawData = data;
-  } else if (typeof data === "string") {
-    try {
-      const parsed = JSON.parse(data);
-      if (Array.isArray(parsed)) rawData = parsed;
-    } catch {
-      rawData = [];
-    }
-  }
-
-  const safeData: HeatmapDataPoint[] = rawData
-    .filter((d): d is Record<string, unknown> => d != null && typeof d === "object")
-    .map((d) => ({
-      date: d.date ? String(d.date) : undefined,
-      day: d.day ? String(d.day) : undefined,
-      count: typeof d.count === "number" ? d.count : Number(d.count) || 0,
-      label: d.label ? String(d.label) : undefined,
-    }));
+  const safeData: HeatmapDataPoint[] = parseArrayProp(data).map((d) => ({
+    date: d.date ? String(d.date) : undefined,
+    day: d.day ? String(d.day) : undefined,
+    count: typeof d.count === "number" ? d.count : Number(d.count) || 0,
+    label: d.label ? String(d.label) : undefined,
+  }));
 
   const defaultTheme = {
     0: "bg-slate-100 dark:bg-slate-800/80",
