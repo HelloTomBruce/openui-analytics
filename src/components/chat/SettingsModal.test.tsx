@@ -61,19 +61,18 @@ describe("SettingsModal tab 布局", () => {
     expect(screen.queryByLabelText(/GitLab MCP Endpoint/)).not.toBeInTheDocument();
   });
 
-  it("点击「数据源」tab 切换面板，展示 GitLab 配置与探活状态", async () => {
+  it("点击「数据源」tab 切换面板，展示数据源列表与探活状态", async () => {
     renderModal();
     fireEvent.click(screen.getByRole("tab", { name: "数据源" }));
 
-    expect(screen.getByLabelText(/GitLab MCP Endpoint/)).toHaveValue(
-      "http://127.0.0.1:5002/mcp"
-    );
-    expect(screen.getByText("外部 GitLab MCP 配置")).toBeInTheDocument();
-
+    // 数据源列表由 DatasourceSettings 经 /api/datasources 渲染（mock 返回 ZenTao MCP）
     await waitFor(() => {
       expect(screen.getByText("ZenTao MCP")).toBeInTheDocument();
       expect(screen.getByText("42ms")).toBeInTheDocument();
     });
+    expect(
+      screen.getByRole("button", { name: /添加数据源/ })
+    ).toBeInTheDocument();
     expect(
       screen.getByRole("tab", { name: "数据源" })
     ).toHaveAttribute("aria-selected", "true");
@@ -84,7 +83,9 @@ describe("SettingsModal tab 布局", () => {
     fireEvent.keyDown(screen.getByRole("tab", { name: "模型配置" }), {
       key: "ArrowRight",
     });
-    expect(screen.getByLabelText(/GitLab MCP Endpoint/)).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /添加数据源/ })
+    ).toBeInTheDocument();
     expect(document.activeElement).toBe(
       screen.getByRole("tab", { name: "数据源" })
     );
