@@ -26,7 +26,6 @@ describe("MessageList 流式重渲染治理", () => {
     const props = {
       messages: [userMsg, aiMsg],
       status: "ready",
-      isLoading: false,
       error: undefined,
       showRawLang: false,
       onRendererAction: vi.fn(),
@@ -37,7 +36,7 @@ describe("MessageList 流式重渲染治理", () => {
     expect(vi.mocked(extractOpenUI)).toHaveBeenCalledTimes(2);
 
     // 流式开始：仅最后一条消息的 isStreaming 变化
-    rerender(<MessageList {...props} status="streaming" isLoading />);
+    rerender(<MessageList {...props} status="streaming" />);
     // user 消息 props 未变（memo 拦截）；ai 消息重渲染但 content 未变（useMemo 拦截）
     expect(vi.mocked(extractOpenUI)).toHaveBeenCalledTimes(2);
   });
@@ -46,7 +45,6 @@ describe("MessageList 流式重渲染治理", () => {
     const base = {
       messages: [userMsg, aiMsg],
       status: "ready",
-      isLoading: false,
       error: undefined,
       showRawLang: false,
       onRendererAction: vi.fn(),

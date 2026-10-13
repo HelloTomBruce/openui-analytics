@@ -135,6 +135,14 @@ export default function ChatDashboard() {
     alert(`触发 Action: ${msg}`);
   }, []);
 
+  // 稳定回调：配合子组件 memo 化，避免每次渲染传递新闭包
+  const handleToggleRawLang = useCallback(() => setShowRawLang((v) => !v), []);
+  const handleOpenSettings = useCallback(() => setShowSettings(true), [setShowSettings]);
+  const handleOpenDevTools = useCallback(() => setShowDevTools(true), []);
+  const handleCloseDevTools = useCallback(() => setShowDevTools(false), []);
+  const handleCloseSettings = useCallback(() => setShowSettings(false), [setShowSettings]);
+  const handleCancelRename = useCallback(() => setEditingSessionId(null), [setEditingSessionId]);
+
   return (
     <div className="flex h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans overflow-hidden">
       <ChatSidebar
@@ -151,12 +159,12 @@ export default function ChatDashboard() {
         onSaveRename={handleSaveRename}
         onDeleteSession={handleDeleteSession}
         onEditTitleChange={setEditingTitleText}
-        onCancelEdit={() => setEditingSessionId(null)}
         onClearAllSessions={handleClearAllSessions}
         onPresetSelect={handleRendererAction}
-        onOpenSettings={() => setShowSettings(true)}
-        onOpenDevTools={() => setShowDevTools(true)}
-        onToggleRawLang={() => setShowRawLang(!showRawLang)}
+        onOpenSettings={handleOpenSettings}
+        onOpenDevTools={handleOpenDevTools}
+        onToggleRawLang={handleToggleRawLang}
+        onCancelEdit={handleCancelRename}
       />
 
       {/* 主对话工作区 */}
@@ -183,14 +191,14 @@ export default function ChatDashboard() {
               <span>新对话</span>
             </button>
             <button
-              onClick={() => setShowDevTools(true)}
+              onClick={handleOpenDevTools}
               className="text-xs text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-950/50 flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-purple-200 dark:border-purple-800"
             >
               <Code2 className="w-3.5 h-3.5" />
               <span>AST 沙箱</span>
             </button>
             <button
-              onClick={() => setShowSettings(true)}
+              onClick={handleOpenSettings}
               className="text-xs text-slate-600 dark:text-slate-300 hover:text-slate-900 flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800"
             >
               <Settings className="w-3.5 h-3.5" />
@@ -211,7 +219,6 @@ export default function ChatDashboard() {
         <MessageList
           messages={messages}
           status={status}
-          isLoading={isLoading}
           error={error}
           showRawLang={showRawLang}
           onRendererAction={handleRendererAction}
@@ -231,7 +238,7 @@ export default function ChatDashboard() {
           code={devToolsCode}
           onCodeChange={setDevToolsCode}
           onAction={handleDevToolsAction}
-          onClose={() => setShowDevTools(false)}
+          onClose={handleCloseDevTools}
         />
       )}
 
@@ -252,7 +259,7 @@ export default function ChatDashboard() {
           onAccessTokenChange={setAccessToken}
           onTemperatureChange={setTemperature}
           onSave={saveSettings}
-          onClose={() => setShowSettings(false)}
+          onClose={handleCloseSettings}
         />
       )}
     </div>

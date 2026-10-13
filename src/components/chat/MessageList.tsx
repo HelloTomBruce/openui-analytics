@@ -153,8 +153,8 @@ const MessageItem = React.memo(function MessageItem({
 
 interface MessageListProps {
   messages: Message[];
+  /** useChat 状态：submitted | streaming | ready | error */
   status: string;
-  isLoading: boolean;
   error: Error | undefined;
   showRawLang: boolean;
   onRendererAction: (actionPrompt: string) => void;
@@ -164,12 +164,13 @@ interface MessageListProps {
 export function MessageList({
   messages,
   status,
-  isLoading,
   error,
   showRawLang,
   onRendererAction,
   onReload,
 }: MessageListProps) {
+  // isLoading 与 status 同源，内部派生避免双重传参
+  const isLoading = status === "submitted" || status === "streaming";
   return (
     <div className="flex-1 overflow-y-auto p-6 space-y-6">
       {messages.map((msg, index) => (
