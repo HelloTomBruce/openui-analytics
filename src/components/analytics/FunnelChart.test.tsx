@@ -27,8 +27,8 @@ describe("FunnelChart 流失率标注", () => {
         ]}
       />
     );
-    // 两个阶段之间只应有一条连接线（精确文本匹配叶子节点）
-    expect(screen.getAllByText("流失率: ~50%")).toHaveLength(1);
+    // 两个阶段之间只应有一条连接线（限定叶子 span，避免父容器 textContent 重复命中）
+    expect(screen.getAllByText("流失率: ~50%", { selector: "span" })).toHaveLength(1);
   });
 
   it("当前阶段值为 0 时不产生 NaN/Infinity", () => {
