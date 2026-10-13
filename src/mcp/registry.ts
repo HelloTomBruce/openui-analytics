@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { pool } from "@/lib/postgres";
 import { getGitLabMcpClient } from "./mcpClient";
+import { DIALECTS } from "./db/dialect";
 
 /**
  * 数据源注册表：内置三源 + 动态源（config/datasources.json v2）的读取、校验与 CRUD。
@@ -479,11 +480,32 @@ export async function checkDataSourceHealth(
   const probe = PROBES[id];
   const startedAt = Date.now();
   if (!probe) {
-    // 动态数据源：http-mcp 对配置 url 做可达性探测；db 源探活由方言层提供（dynamicSources 接入）
+    // 动态数据源：http-mcp 对配置 url 做可达性探测；db 源经方言 connect→ping→close 探活
     const dyn = getDynamicSourceConfig(id);
     if (dyn?.kind === "http-mcp") {
       try {
         await withTimeout(probeHttpMcp(dyn.url), HEALTH_TIMEOUT_MS);
+        return { ok: true, latencyMs: Date.now() - startedAt };
+      } catch (err) {
+        return {
+          ok: false,
+          latencyMs: Date.now() - startedAt,
+          error: err instanceof Error ? err.message : String(err),
+        };
+      }
+    }
+    if (dyn?.kind === "db") {
+      try {
+        const dialect = DIALECTS[dyn.dbType];
+        const dbClient = await withTimeout(
+          dialect.connect(dyn.connectionString),
+          HEALTH_TIMEOUT_MS
+        );
+        try {
+          await withTimeout(dialect.ping(dbClient), HEALTH_TIMEOUT_MS);
+        } finally {
+          await dbClient.close().catch(() => {});
+        }
         return { ok: true, latencyMs: Date.now() - startedAt };
       } catch (err) {
         return {
