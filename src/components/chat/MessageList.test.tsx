@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { render, screen, cleanup } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 import type { Message } from "@ai-sdk/react";
 import { extractOpenUI } from "@/lib/extractOpenUI";
 import { MessageList } from "./MessageList";
@@ -117,5 +117,84 @@ describe("MessageList 流式重渲染治理", () => {
     const newMsg: Message = { id: "u2", role: "user", content: "再问一个" };
     rerender(<MessageList {...base} messages={[userMsg, aiMsg, newMsg]} />);
     expect(vi.mocked(extractOpenUI)).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe("MessageList 快捷滚动操作", () => {
+  const base = {
+    messages: [userMsg, aiMsg],
+    status: "ready" as const,
+    error: undefined,
+    showRawLang: false,
+    onRendererAction: vi.fn(),
+    onReload: vi.fn(),
+  };
+
+  afterEach(() => {
+    cleanup();
+    vi.clearAllMocks();
+  });
+
+  /** mock 滚动容器布局属性（jsdom 不做布局，默认全 0） */
+  function mockScrollMetrics(
+    el: HTMLElement,
+    metrics: { scrollHeight: number; clientHeight: number; scrollTop: number }
+  ) {
+    Object.defineProperty(el, "scrollHeight", { value: metrics.scrollHeight, configurable: true });
+    Object.defineProperty(el, "clientHeight", { value: metrics.clientHeight, configurable: true });
+    Object.defineProperty(el, "scrollTop", { value: metrics.scrollTop, configurable: true });
+  }
+
+  function getScrollContainer(container: HTMLElement): HTMLDivElement {
+    const el = container.querySelector<HTMLDivElement>("[data-scroll-container]");
+    if (!el) throw new Error("滚动容器未找到");
+    return el;
+  }
+
+  it("短列表无溢出时不显示任何快捷滚动按钮", () => {
+    const { container } = render(<MessageList {...base} />);
+    const el = getScrollContainer(container);
+    fireEvent.scroll(el); // 默认全 0：视为在底部
+
+    expect(screen.queryByRole("button", { name: "回到底部" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "回到顶部" })).not.toBeInTheDocument();
+  });
+
+  it("位于顶部时仅显示回到底部，点击平滑滚动到底", () => {
+    const { container } = render(<MessageList {...base} />);
+    const el = getScrollContainer(container);
+    el.scrollTo = vi.fn();
+    mockScrollMetrics(el, { scrollHeight: 2000, clientHeight: 500, scrollTop: 0 });
+    fireEvent.scroll(el);
+
+    const btn = screen.getByRole("button", { name: "回到底部" });
+    expect(screen.queryByRole("button", { name: "回到顶部" })).not.toBeInTheDocument();
+
+    fireEvent.click(btn);
+    expect(el.scrollTo).toHaveBeenCalledWith({ top: 2000, behavior: "smooth" });
+  });
+
+  it("位于中部时顶/底两个按钮都显示", () => {
+    const { container } = render(<MessageList {...base} />);
+    const el = getScrollContainer(container);
+    mockScrollMetrics(el, { scrollHeight: 2000, clientHeight: 500, scrollTop: 800 });
+    fireEvent.scroll(el);
+
+    expect(screen.getByRole("button", { name: "回到底部" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "回到顶部" })).toBeInTheDocument();
+  });
+
+  it("位于底部时仅显示回到顶部，点击回到顶部", () => {
+    const { container } = render(<MessageList {...base} />);
+    const el = getScrollContainer(container);
+    el.scrollTo = vi.fn();
+    mockScrollMetrics(el, { scrollHeight: 2000, clientHeight: 500, scrollTop: 1500 });
+    fireEvent.scroll(el);
+
+    const btn = screen.getByRole("button", { name: "回到顶部" });
+    expect(screen.queryByRole("button", { name: "回到底部" })).not.toBeInTheDocument();
+
+    fireEvent.click(btn);
+    expect(el.scrollTo).toHaveBeenCalledWith({ top: 0, behavior: "smooth" });
   });
 });

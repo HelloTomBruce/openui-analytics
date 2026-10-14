@@ -18,6 +18,30 @@ describe("SourcePicker", () => {
     cleanup();
   });
 
+  it("点击后向上弹出选择层，不遮挡下方输入区", () => {
+    render(<SourcePicker sources={SOURCES} selected={undefined} onChange={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: /数据源/ }));
+
+    const panel = screen.getByRole("group", { name: "数据源选择" });
+    expect(panel.className).toContain("bottom-full");
+    expect(panel.className).not.toContain("top-full");
+  });
+
+  it("disabled 锁定时面板只读：勾选框禁用、显示锁定提示、点击无副作用", () => {
+    const onChange = vi.fn();
+    render(
+      <SourcePicker sources={SOURCES} selected={["postgres"]} onChange={onChange} disabled />
+    );
+    fireEvent.click(screen.getByRole("button", { name: /数据源/ }));
+
+    expect(screen.getByText(/已锁定/)).toBeInTheDocument();
+    const cb = screen.getByLabelText("Jira MCP");
+    expect(cb).toBeDisabled();
+    expect(cb).not.toBeChecked();
+    fireEvent.click(cb);
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
   it("仅渲染启用源，selected 为 undefined 时全选", () => {
     render(<SourcePicker sources={SOURCES} selected={undefined} onChange={vi.fn()} />);
     fireEvent.click(screen.getByRole("button", { name: /数据源/ }));

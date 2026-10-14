@@ -1,17 +1,13 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import type { Message } from "@ai-sdk/react";
-import { useSessionManager, type SetMessagesFn } from "./useSessionManager";
+import { useSessionManager } from "./useSessionManager";
 import {
   getSavedSessions,
   getActiveSessionId,
   createNewSession,
   persistSessions,
 } from "@/lib/sessionStorage";
-
-function makeRef(): React.RefObject<SetMessagesFn | null> {
-  return { current: vi.fn() };
-}
 
 const fakeEvent = { stopPropagation: vi.fn() } as unknown as React.MouseEvent;
 
@@ -24,7 +20,7 @@ describe("useSessionManager 持久化行为", () => {
   });
 
   it("首次挂载创建初始会话并落盘，且设为活跃会话", () => {
-    const { result } = renderHook(() => useSessionManager(makeRef()));
+    const { result } = renderHook(() => useSessionManager());
 
     expect(result.current.sessions).toHaveLength(1);
     expect(result.current.currentSessionId).toBe(result.current.sessions[0].id);
@@ -33,7 +29,7 @@ describe("useSessionManager 持久化行为", () => {
   });
 
   it("删除仅剩的一条会话：替换为新会话，被删会话刷新后不复活", () => {
-    const { result } = renderHook(() => useSessionManager(makeRef()));
+    const { result } = renderHook(() => useSessionManager());
     const onlyId = result.current.sessions[0].id;
 
     act(() => {
@@ -54,7 +50,7 @@ describe("useSessionManager 持久化行为", () => {
     const old = [createNewSession("旧会话A"), createNewSession("旧会话B")];
     persistSessions(old);
 
-    const { result } = renderHook(() => useSessionManager(makeRef()));
+    const { result } = renderHook(() => useSessionManager());
     expect(result.current.sessions).toHaveLength(2);
 
     act(() => {
@@ -69,7 +65,7 @@ describe("useSessionManager 持久化行为", () => {
   });
 
   it("新建会话立即落盘，刷新后不丢失", () => {
-    const { result } = renderHook(() => useSessionManager(makeRef()));
+    const { result } = renderHook(() => useSessionManager());
     const before = result.current.sessions.length;
 
     act(() => {
@@ -84,7 +80,7 @@ describe("useSessionManager 持久化行为", () => {
   });
 
   it("保存会话消息：消息落盘、标题由首条用户消息生成、按 updatedAt 排序", () => {
-    const { result } = renderHook(() => useSessionManager(makeRef()));
+    const { result } = renderHook(() => useSessionManager());
 
     act(() => {
       result.current.saveCurrentSessionMessages([
@@ -102,7 +98,7 @@ describe("useSessionManager 持久化行为", () => {
   it("删除中间会话：剩余会话保持，活跃会话切换到第一条", () => {
     const a = createNewSession("A");
     persistSessions([a]);
-    const { result } = renderHook(() => useSessionManager(makeRef()));
+    const { result } = renderHook(() => useSessionManager());
 
     act(() => {
       result.current.handleCreateNewChat(); // 现在 2 条，活跃为新建
@@ -119,7 +115,7 @@ describe("useSessionManager 持久化行为", () => {
   });
 
   it("流式期间切换会话：指定 sessionId 保存时写回发起会话而非当前会话", () => {
-    const { result } = renderHook(() => useSessionManager(makeRef()));
+    const { result } = renderHook(() => useSessionManager());
     const originId = result.current.currentSessionId;
 
     // 新建并切换到会话 B（模拟流式期间用户切换会话）
@@ -144,7 +140,7 @@ describe("useSessionManager 持久化行为", () => {
   });
 
   it("重命名会话后落盘", () => {
-    const { result } = renderHook(() => useSessionManager(makeRef()));
+    const { result } = renderHook(() => useSessionManager());
     const id = result.current.sessions[0].id;
 
     act(() => {
@@ -158,5 +154,36 @@ describe("useSessionManager 持久化行为", () => {
     });
 
     expect(getSavedSessions()[0].title).toBe("营收专项分析");
+  });
+
+  it("registerSetMessages 注入后新建会话会同步消息列表", () => {
+    const setMessages = vi.fn();
+    const { result } = renderHook(() => useSessionManager());
+
+    act(() => {
+      result.current.registerSetMessages(setMessages);
+    });
+    act(() => {
+      result.current.handleCreateNewChat();
+    });
+
+    expect(setMessages).toHaveBeenCalledTimes(1);
+    const synced = setMessages.mock.calls[0][0] as Message[];
+    expect(synced).toHaveLength(1);
+    expect(synced[0].role).toBe("assistant");
+  });
+
+  it("syncMessages/getMessages 读写最新消息快照（供锁定判定与 onFinish）", () => {
+    const { result } = renderHook(() => useSessionManager());
+    const msgs: Message[] = [
+      { id: "w", role: "assistant", content: "欢迎" },
+      userMessage,
+    ];
+
+    act(() => {
+      result.current.syncMessages(msgs);
+    });
+
+    expect(result.current.getMessages()).toEqual(msgs);
   });
 });

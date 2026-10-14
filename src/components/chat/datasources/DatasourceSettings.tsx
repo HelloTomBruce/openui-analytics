@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { Database, Pencil, Plus, Power, Trash2 } from "lucide-react";
+import { Database, Loader2, Pencil, Plus, Power, Trash2 } from "lucide-react";
 import type { DataSourceDescriptor } from "@/mcp/registry";
 import { useDatasources } from "./useDatasources";
 
@@ -43,10 +43,15 @@ function badgeClass(source: DataSourceDescriptor): string {
 }
 
 export function DatasourceSettings() {
-  const { sources, health, loading, createSource, updateSource, removeSource } =
+  const { sources, health, loading, refreshing, createSource, updateSource, removeSource } =
     useDatasources();
   const [form, setForm] = useState<FormState | typeof CLOSED_FORM>(CLOSED_FORM);
   const [errors, setErrors] = useState<string[]>([]);
+  /** 行内操作 pending：启停/删除涉及 PATCH + 全量探活刷新，秒级耗时必须有反馈 */
+  const [pending, setPending] = useState<{
+    id: string;
+    action: "toggle" | "delete";
+  } | null>(null);
 
   const openCreate = () => {
     setErrors([]);
@@ -134,7 +139,21 @@ export function DatasourceSettings() {
   };
 
   const toggleEnabled = async (s: DataSourceDescriptor) => {
-    await updateSource(s.id, { enabled: !(s.enabled !== false) });
+    setPending({ id: s.id, action: "toggle" });
+    try {
+      await updateSource(s.id, { enabled: !(s.enabled !== false) });
+    } finally {
+      setPending(null);
+    }
+  };
+
+  const remove = async (id: string) => {
+    setPending({ id, action: "delete" });
+    try {
+      await removeSource(id);
+    } finally {
+      setPending(null);
+    }
   };
 
   const inputClass =
@@ -148,9 +167,18 @@ export function DatasourceSettings() {
         {loading && sources.length === 0 && (
           <div className="text-[11px] text-slate-400">加载中...</div>
         )}
+        {refreshing && sources.length > 0 && (
+          <div className="text-[10px] text-slate-400 flex items-center gap-1">
+            <Loader2 className="w-3 h-3 animate-spin" />
+            <span>正在检查数据源健康状态…</span>
+          </div>
+        )}
         {sources.map((s) => {
           const h = health[s.id];
           const enabled = s.enabled !== false;
+          const busy = pending?.id === s.id;
+          const busyToggle = busy && pending.action === "toggle";
+          const busyDelete = busy && pending.action === "delete";
           return (
             <div
               key={s.id}
@@ -182,6 +210,8 @@ export function DatasourceSettings() {
                 </span>
                 <button
                   onClick={() => void toggleEnabled(s)}
+                  disabled={busy}
+                  aria-busy={busyToggle}
                   aria-label={`启停 ${s.id}`}
                   title={enabled ? "点击停用" : "点击启用"}
                   className={`p-1 rounded transition-colors ${
@@ -190,25 +220,36 @@ export function DatasourceSettings() {
                       : "text-slate-300 dark:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800"
                   }`}
                 >
-                  <Power className="w-3.5 h-3.5" />
+                  {busyToggle ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Power className="w-3.5 h-3.5" />
+                  )}
                 </button>
                 {(
                   <>
                     <button
                       onClick={() => openEdit(s)}
+                      disabled={busy}
                       aria-label={`编辑 ${s.id}`}
-                      className="p-1 rounded text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800"
+                      className="p-1 rounded text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-50"
                       title="编辑"
                     >
                       <Pencil className="w-3.5 h-3.5" />
                     </button>
                     <button
-                      onClick={() => void removeSource(s.id)}
+                      onClick={() => void remove(s.id)}
+                      disabled={busy}
+                      aria-busy={busyDelete}
                       aria-label={`删除 ${s.id}`}
-                      className="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-slate-100 dark:hover:bg-slate-800"
+                      className="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-50"
                       title="删除"
                     >
-                      <Trash2 className="w-3.5 h-3.5" />
+                      {busyDelete ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <Trash2 className="w-3.5 h-3.5" />
+                      )}
                     </button>
                   </>
                 )}

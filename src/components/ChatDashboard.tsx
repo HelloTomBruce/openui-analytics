@@ -2,12 +2,11 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useChat } from "@ai-sdk/react";
-import type { Message } from "@ai-sdk/react";
 import { TrendingUp, Plus, Code2, Settings, RefreshCw } from "lucide-react";
 import { DEFAULT_SANDBOX_CODE } from "@/lib/presetQueries";
 import { upsertMessage } from "@/lib/messages";
 import { useLlmSettings } from "@/hooks/useLlmSettings";
-import { useSessionManager, type SetMessagesFn } from "@/hooks/useSessionManager";
+import { useSessionManager } from "@/hooks/useSessionManager";
 import { ChatSidebar } from "@/components/chat/ChatSidebar";
 import { MessageList } from "@/components/chat/MessageList";
 import { ChatInput } from "@/components/chat/ChatInput";
@@ -46,8 +45,7 @@ export default function ChatDashboard() {
   } = useLlmSettings();
 
   // useChat 的 initialMessages 由 useSessionManager 提供，而会话切换又需要
-  // useChat 的 setMessages —— 通过 ref 延迟注入打破构造顺序环（见 hook 注释）。
-  const setMessagesRef = useRef<SetMessagesFn | null>(null);
+  // useChat 的 setMessages —— 通过 registerSetMessages 延迟注入打破构造顺序环（见 hook 注释）。
   // 发起请求时的会话 id：流式期间用户可能切换会话，onFinish 须写回发起会话
   const streamingSessionIdRef = useRef<string | null>(null);
 
@@ -62,13 +60,16 @@ export default function ChatDashboard() {
     initialMessages,
     saveCurrentSessionMessages,
     updateSessionSources,
+    registerSetMessages,
+    syncMessages,
+    getMessages,
     handleCreateNewChat,
     handleSelectSession,
     handleDeleteSession,
     handleStartRename,
     handleSaveRename,
     handleClearAllSessions,
-  } = useSessionManager(setMessagesRef);
+  } = useSessionManager();
 
   const handleChatError = useCallback((err: Error) => {
     console.error("Chat error:", err);
@@ -83,13 +84,15 @@ export default function ChatDashboard() {
   const handleSourcesChange = useCallback(
     (ids: string[]) => {
       if (!currentSessionId) return;
+      // 会话开始后锁定：上下文已建立在既有源上，中途改动会造成工具归因不一致
+      if (getMessages().some((m) => m.role === "user")) return;
       const allIds = enabledPickerSources.map((s) => s.id);
       const isFullSelection =
         ids.length === allIds.length && allIds.every((id) => ids.includes(id));
       // 全选恢复 undefined 语义：后续新增源自动纳入本会话
       updateSessionSources(currentSessionId, isFullSelection ? undefined : ids);
     },
-    [currentSessionId, enabledPickerSources, updateSessionSources]
+    [currentSessionId, enabledPickerSources, updateSessionSources, getMessages]
   );
   const chatBodyWithSources = useMemo(
     () => ({ ...chatBody, sources: activeSession?.enabledSources }),
@@ -103,9 +106,6 @@ export default function ChatDashboard() {
       : enabledPickerSources;
     return list.map((s) => ({ id: s.id, name: s.name }));
   }, [enabledPickerSources, activeSession?.enabledSources]);
-
-  // messagesRef 始终指向最新 messages，规避 onFinish 闭包过期问题
-  const messagesRef = useRef<Message[]>([]);
 
   // 使用 Next.js 官方 Vercel AI SDK 的 useChat Hook
   const {
@@ -126,23 +126,25 @@ export default function ChatDashboard() {
     onError: handleChatError,
     initialMessages,
     onFinish: (message) => {
-      // 流式结束时保存：用 messagesRef 读取最新列表（含多步工具调用的中间消息），
+      // 流式结束时保存：用 getMessages() 读取最新列表（含多步工具调用的中间消息），
       // upsert 防止与 AI SDK 已合入的最终消息重复；写回发起请求时的会话。
       saveCurrentSessionMessages(
-        upsertMessage(messagesRef.current, message),
+        upsertMessage(getMessages(), message),
         streamingSessionIdRef.current ?? undefined
       );
     },
   });
 
-  // messagesRef 同步（声明在 useChat 之前，此处 messages 已就位）
+  // useChat 就绪后注入 setMessages 与最新消息快照（均由 useSessionManager 内部持有）
   useEffect(() => {
-    messagesRef.current = messages;
-  }, [messages]);
+    registerSetMessages(setMessages);
+  }, [setMessages, registerSetMessages]);
+  useEffect(() => {
+    syncMessages(messages);
+  }, [messages, syncMessages]);
 
-  useEffect(() => {
-    setMessagesRef.current = setMessages;
-  }, [setMessages]);
+  // 会话开始（存在用户消息）即锁定数据源选择：仅初始会话（只有欢迎语）可勾选
+  const sourcesLocked = messages.some((m) => m.role === "user");
 
   // 提交/追加消息时记录发起会话，供 onFinish 定向保存
   const handleChatSubmit = useCallback(
@@ -258,6 +260,7 @@ export default function ChatDashboard() {
           sources={enabledPickerSources}
           selected={activeSession?.enabledSources}
           onChange={handleSourcesChange}
+          disabled={sourcesLocked}
         />
 
         <ChatInput

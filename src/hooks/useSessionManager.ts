@@ -20,13 +20,12 @@ export type SetMessagesFn = (messages: Message[]) => void;
  * 会话管理：会话列表、活跃会话、增删改查与重命名。
  *
  * useChat 的 initialMessages 需要先由本 hook 提供，而会话切换又需要调用
- * useChat 的 setMessages —— 存在构造顺序环，因此通过 setMessagesRef 延迟注入：
- * ChatDashboard 先创建 ref 传给本 hook，useChat 返回后把 setMessages 写入 ref。
- * 所有 handler 仅在用户交互时触发，此时 ref 必定已就绪。
+ * useChat 的 setMessages —— 存在构造顺序环。解法：本 hook 内部持有
+ * setMessages 与最新消息的 ref（变更全部收敛在 hook 内部，满足编译器
+ * 不可变约束），ChatDashboard 在 useChat 就绪后通过 registerSetMessages /
+ * syncMessages 回写。所有 handler 仅在用户交互时触发，此时必定已注册。
  */
-export function useSessionManager(
-  setMessagesRef: React.RefObject<SetMessagesFn | null>
-) {
+export function useSessionManager() {
   // 会话列表与活跃会话一次性协同初始化，保证两者一致
   // （持久化副作用已下沉到下方 useEffect 单点完成）。
   // 注：本 hook 依赖 localStorage 惰性初始化，前提是入口 page.tsx 以
@@ -52,6 +51,23 @@ export function useSessionManager(
 
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [editingTitleText, setEditingTitleText] = useState("");
+
+  // useChat 的 setMessages 延迟注册（构造顺序环）：切换/新建会话时同步消息列表
+  const setMessagesRef = useRef<SetMessagesFn | null>(null);
+  const registerSetMessages = useCallback((fn: SetMessagesFn) => {
+    setMessagesRef.current = fn;
+  }, []);
+  const setMessages = useCallback(
+    (messages: Message[]) => setMessagesRef.current?.(messages),
+    []
+  );
+
+  // 最新消息快照：onFinish 保存与数据源锁定判定需要流式期间的最新 messages
+  const messagesRef = useRef<Message[]>([]);
+  const syncMessages = useCallback((messages: Message[]) => {
+    messagesRef.current = messages;
+  }, []);
+  const getMessages = useCallback(() => messagesRef.current, []);
 
   const currentSessionIdRef = useRef(currentSessionId);
   useEffect(() => {
@@ -119,11 +135,6 @@ export function useSessionManager(
     }
     return [DEFAULT_WELCOME_MESSAGE];
   }, []);
-
-  const setMessages = useCallback(
-    (messages: Message[]) => setMessagesRef.current?.(messages),
-    [setMessagesRef]
-  );
 
   // 新建会话
   const handleCreateNewChat = useCallback(() => {
@@ -223,6 +234,9 @@ export function useSessionManager(
     initialMessages,
     saveCurrentSessionMessages,
     updateSessionSources,
+    registerSetMessages,
+    syncMessages,
+    getMessages,
     handleCreateNewChat,
     handleSelectSession,
     handleDeleteSession,

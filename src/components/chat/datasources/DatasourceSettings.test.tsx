@@ -1,6 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor, cleanup } from "@testing-library/react";
 import { DatasourceSettings } from "./DatasourceSettings";
+import { resetDatasourceCacheForTests, useDatasourceList } from "./useDatasources";
+
+/** 探针：模拟 ChatDashboard 顶层的另一个 useDatasourceList 实例 */
+function Probe() {
+  const { sources } = useDatasourceList();
+  return <div data-testid="probe-count">{sources.length}</div>;
+}
 
 const fetchMock = vi.fn();
 
@@ -88,6 +95,7 @@ async function openCreateForm() {
 describe("DatasourceSettings", () => {
   beforeEach(() => {
     localStorage.clear();
+    resetDatasourceCacheForTests();
     fetchMock.mockReset();
     vi.stubGlobal("fetch", fetchMock);
     mockGetAll();
@@ -282,6 +290,97 @@ describe("DatasourceSettings", () => {
     await waitFor(() => {
       expect(screen.queryByText("Jira MCP")).not.toBeInTheDocument();
     });
+  });
+
+  it("再次打开时命中缓存立即渲染，不重新整屏 loading", async () => {
+    // 第一次挂载填充模块级缓存
+    const first = renderSettings();
+    expect(await first.findByText("Jira MCP")).toBeInTheDocument();
+    first.unmount();
+
+    // 第二次挂载：GET 挂起未返回，列表应同步来自缓存
+    fetchMock.mockImplementation(
+      () => new Promise(() => {}) // 永不 resolve，隔离网络
+    );
+    renderSettings();
+    expect(screen.getByText("Jira MCP")).toBeInTheDocument();
+    expect(screen.queryByText("加载中...")).not.toBeInTheDocument();
+  });
+
+  it("启停按钮点击后立即 loading 并禁用，请求完成后恢复", async () => {
+    let resolvePatch!: (v: unknown) => void;
+    fetchMock.mockImplementation(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        if (init?.method === "PATCH") {
+          return new Promise((res) => {
+            resolvePatch = res;
+          });
+        }
+        const url = String(input);
+        if (url.includes("/api/datasources/")) return jsonResponse({ error: "" }, 500);
+        return jsonResponse({ sources: SOURCES, health: HEALTH });
+      }
+    );
+    renderSettings();
+    const btn = await screen.findByRole("button", { name: /启停 zentao-cli/ });
+
+    fireEvent.click(btn);
+
+    await waitFor(() => expect(btn).toBeDisabled());
+    expect(btn).toHaveAttribute("aria-busy", "true");
+    resolvePatch(jsonResponse({ source: SOURCES[2] }, 200));
+    await waitFor(() => expect(btn).not.toBeDisabled());
+  });
+
+  it("删除按钮点击后立即 loading 并禁用，请求完成后恢复", async () => {
+    let resolveDelete!: (v: unknown) => void;
+    fetchMock.mockImplementation(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        if (init?.method === "DELETE") {
+          return new Promise((res) => {
+            resolveDelete = res;
+          });
+        }
+        const url = String(input);
+        if (url.includes("/api/datasources/")) return jsonResponse({ error: "" }, 500);
+        return jsonResponse({ sources: SOURCES, health: HEALTH });
+      }
+    );
+    renderSettings();
+    const btn = await screen.findByRole("button", { name: /删除 jira/ });
+
+    fireEvent.click(btn);
+
+    await waitFor(() => expect(btn).toBeDisabled());
+    expect(btn).toHaveAttribute("aria-busy", "true");
+    resolveDelete({ status: 204 });
+    await waitFor(() => expect(btn).not.toBeDisabled());
+  });
+
+  it("设置面板删除数据源后，其它 useDatasourceList 实例（如底部计数）实时同步", async () => {
+    let deleted = false;
+    fetchMock.mockImplementation(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === "DELETE") {
+        deleted = true;
+        return { status: 204 };
+      }
+      return jsonResponse({
+        sources: deleted ? SOURCES.filter((s) => s.id !== "jira") : SOURCES,
+        health: HEALTH,
+      });
+    });
+    render(
+      <>
+        <Probe />
+        <DatasourceSettings />
+      </>
+    );
+    const probe = screen.getByTestId("probe-count");
+    await waitFor(() => expect(probe).toHaveTextContent(String(SOURCES.length)));
+
+    fireEvent.click(screen.getByRole("button", { name: /删除 jira/ }));
+
+    await waitFor(() => expect(probe).toHaveTextContent(String(SOURCES.length - 1)));
   });
 
   it("POST 400 时展示服务端错误列表", async () => {

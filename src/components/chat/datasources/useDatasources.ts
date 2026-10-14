@@ -69,11 +69,54 @@ async function fetchDatasourceList(): Promise<DatasourceListPayload | null> {
   }
 }
 
+/**
+ * 模块级快照（stale-while-revalidate）：
+ * GET /api/datasources 会对每个源做实时健康探测（慢源秒级超时），
+ * 且 ChatDashboard 顶层已拉取同一列表——缓存上一次结果，
+ * 让设置弹窗/选择器重新挂载时立即渲染旧数据，后台再刷新健康状态。
+ */
+let snapshot: DatasourceListPayload | null = null;
+
+/** 活跃 hook 实例集合：任一实例拉到新数据即广播，其余实例（如底部计数）实时同步 */
+const listeners = new Set<(data: DatasourceListPayload) => void>();
+
+function publishData(data: DatasourceListPayload): void {
+  snapshot = data;
+  listeners.forEach((apply) => apply(data));
+}
+
+/** 仅测试用：隔离模块级缓存 */
+export function resetDatasourceCacheForTests(): void {
+  snapshot = null;
+  listeners.clear();
+}
+
 /** 轻量列表 hook：会话选择器（SourcePicker）与设置面板共用 */
 export function useDatasourceList() {
-  const [sources, setSources] = useState<DataSourceDescriptor[]>([]);
-  const [health, setHealth] = useState<Record<string, HealthResult>>({});
-  const [loading, setLoading] = useState(true);
+  // lazy initializer：命中缓存时首帧即有数据，不产生挂载级联渲染
+  const [sources, setSources] = useState<DataSourceDescriptor[]>(
+    () => snapshot?.sources ?? []
+  );
+  const [health, setHealth] = useState<Record<string, HealthResult>>(
+    () => snapshot?.health ?? {}
+  );
+  const [loading, setLoading] = useState(() => snapshot === null);
+  const [refreshing, setRefreshing] = useState(true);
+
+  const apply = useCallback((data: DatasourceListPayload) => {
+    setSources(data.sources);
+    setHealth(data.health);
+    setLoading(false);
+    setRefreshing(false);
+  }, []);
+
+  // 订阅广播：设置面板增删改后的 refresh、其它实例的初始拉取，都会同步到本实例
+  useEffect(() => {
+    listeners.add(apply);
+    return () => {
+      listeners.delete(apply);
+    };
+  }, [apply]);
 
   // 初始加载：setState 只发生在 promise 回调中，避免 effect 内同步 setState 级联渲染
   useEffect(() => {
@@ -81,10 +124,11 @@ export function useDatasourceList() {
     fetchDatasourceList().then((data) => {
       if (cancelled) return;
       if (data) {
-        setSources(data.sources);
-        setHealth(data.health);
+        publishData(data);
+      } else {
+        setLoading(false);
+        setRefreshing(false);
       }
-      setLoading(false);
     });
     return () => {
       cancelled = true;
@@ -92,15 +136,17 @@ export function useDatasourceList() {
   }, []);
 
   const refresh = useCallback(async () => {
+    setRefreshing(true);
     const data = await fetchDatasourceList();
     if (data) {
-      setSources(data.sources);
-      setHealth(data.health);
+      publishData(data);
+    } else {
+      setLoading(false);
+      setRefreshing(false);
     }
-    setLoading(false);
   }, []);
 
-  return { sources, health, loading, refresh };
+  return { sources, health, loading, refreshing, refresh };
 }
 
 /** 完整 CRUD hook：设置面板「数据源」tab 使用 */

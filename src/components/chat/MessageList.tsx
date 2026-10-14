@@ -1,8 +1,8 @@
 "use client";
 
-import React, { useMemo } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Message } from "@ai-sdk/react";
-import { Loader2, Sparkles, FileCode } from "lucide-react";
+import { ArrowDown, ArrowUp, Loader2, Sparkles, FileCode } from "lucide-react";
 import { OpenUIRenderer } from "@/components/OpenUIRenderer";
 import { extractOpenUI } from "@/lib/extractOpenUI";
 
@@ -175,6 +175,9 @@ interface MessageListProps {
   onReload: () => void;
 }
 
+/** 距顶/底多远以内视为「已在顶/底」（阈值像素） */
+const SCROLL_EDGE_THRESHOLD = 120;
+
 export function MessageList({
   messages,
   status,
@@ -186,8 +189,42 @@ export function MessageList({
 }: MessageListProps) {
   // isLoading 与 status 同源，内部派生避免双重传参
   const isLoading = status === "submitted" || status === "streaming";
+
+  // 快捷滚动：右侧悬浮「回到顶部/回到底部」，仅在离开对应边缘时出现
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [atTop, setAtTop] = useState(true);
+  const [atBottom, setAtBottom] = useState(true);
+
+  const updateScrollState = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    setAtTop(el.scrollTop <= SCROLL_EDGE_THRESHOLD);
+    setAtBottom(distanceFromBottom <= SCROLL_EDGE_THRESHOLD);
+  }, []);
+
+  // 挂载后校准一次（恢复历史长会话时初始位置可能不在底部）
+  useEffect(() => {
+    updateScrollState();
+  }, [updateScrollState]);
+
+  const scrollToEdge = useCallback((top: number) => {
+    scrollRef.current?.scrollTo({ top, behavior: "smooth" });
+  }, []);
+
+  const scrollToBottom = useCallback(() => {
+    const el = scrollRef.current;
+    if (el) scrollToEdge(el.scrollHeight);
+  }, [scrollToEdge]);
+
   return (
-    <div className="flex-1 overflow-y-auto p-6 space-y-6">
+    <div className="relative flex-1 min-h-0">
+      <div
+        ref={scrollRef}
+        onScroll={updateScrollState}
+        data-scroll-container=""
+        className="h-full overflow-y-auto p-6 space-y-6"
+      >
       {messages.map((msg, index) => (
         <MessageItem
           key={msg.id || `msg-${index}`}
@@ -231,6 +268,33 @@ export function MessageList({
           >
             重试
           </button>
+        </div>
+      )}
+      </div>
+
+      {/* 右侧快捷滚动操作：仅离开对应边缘时出现对应按钮 */}
+      {(!atTop || !atBottom) && (
+        <div className="absolute right-4 top-1/2 -translate-y-1/2 z-10 flex flex-col gap-2">
+          {!atTop && (
+            <button
+              onClick={() => scrollToEdge(0)}
+              aria-label="回到顶部"
+              title="回到顶部"
+              className="w-7 h-7 rounded-full flex items-center justify-center bg-white/80 dark:bg-slate-900/80 backdrop-blur border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 shadow-md transition-colors"
+            >
+              <ArrowUp className="w-3.5 h-3.5" />
+            </button>
+          )}
+          {!atBottom && (
+            <button
+              onClick={scrollToBottom}
+              aria-label="回到底部"
+              title="回到底部（最新消息）"
+              className="w-7 h-7 rounded-full flex items-center justify-center bg-white/80 dark:bg-slate-900/80 backdrop-blur border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 shadow-md transition-colors"
+            >
+              <ArrowDown className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
       )}
     </div>
