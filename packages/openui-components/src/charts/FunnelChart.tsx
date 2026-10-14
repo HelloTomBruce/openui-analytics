@@ -2,7 +2,11 @@
 
 import React from "react";
 import { Filter, ArrowDown } from "lucide-react";
-import { parseArrayProp } from "@/lib/parseProp";
+import { parseArrayProp } from "../internal/parseProp";
+import { defineComponent } from "@openuidev/react-lang";
+import { z } from "zod";
+import { ComponentSafeWrapper } from "../internal/ComponentSafeWrapper";
+
 
 export interface FunnelStage {
   name: string;
@@ -130,3 +134,27 @@ export const FunnelChart: React.FC<FunnelChartProps> = ({
     </div>
   );
 };
+
+// ===== OpenUI 组件库定义 =====
+export const FunnelChartDef = defineComponent({
+  name: "FunnelChart",
+  description: "业务转化旅程与流失漏斗图，用于获客流程、商机跟进与留存各阶段流失率分析",
+  props: z.object({
+    title: z.any().optional().describe("漏斗图标题"),
+    description: z.any().optional().describe("说明描述"),
+    stages: z.any().optional().describe("漏斗阶段序列"),
+    unit: z.any().optional().describe("数值单位，如：人、单、美元"),
+  }),
+  component: ({ props }: { props: Record<string, unknown> }) => {
+    return (
+      <ComponentSafeWrapper name="FunnelChart">
+        <FunnelChart
+          title={props?.title ? String(props.title) : undefined}
+          description={props?.description ? String(props.description) : undefined}
+          stages={props?.stages as React.ComponentProps<typeof FunnelChart>["stages"]}
+          unit={props?.unit ? String(props.unit) : undefined}
+        />
+      </ComponentSafeWrapper>
+    );
+  },
+});

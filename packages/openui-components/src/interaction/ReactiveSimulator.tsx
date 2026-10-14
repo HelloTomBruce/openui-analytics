@@ -1,9 +1,11 @@
 "use client";
 
 import React, { useState } from "react";
-import { useTriggerAction, useSetFieldValue } from "@openuidev/react-lang";
+import { useTriggerAction, useSetFieldValue, defineComponent } from "@openuidev/react-lang";
 import { Calculator, Sparkles, Download, AlertTriangle } from "lucide-react";
-import { clientTools } from "@/lib/clientTools";
+import { z } from "zod";
+import { toCsvContent, downloadCsv } from "../internal/csv";
+import { ComponentSafeWrapper } from "../internal/ComponentSafeWrapper";
 
 export interface ReactiveSimulatorProps {
   title?: string;
@@ -54,32 +56,27 @@ export const ReactiveSimulator: React.FC<ReactiveSimulatorProps> = ({
     }
   };
 
-  const handleExportSimulation = async () => {
-    await clientTools.export_csv({
-      filename: `simulation_${channelName}_budget_${budget}.csv`,
-      headers: [
-        { key: "channel", header: "渠道" },
-        { key: "budget", header: "模拟预算 ($)" },
-        { key: "cac", header: "预估 CAC ($)" },
-        { key: "cvr", header: "转化率 (%)" },
-        { key: "leads", header: "预期线索数" },
-        { key: "deals", header: "预期成交数" },
-        { key: "revenue", header: "预期营收 ($)" },
-        { key: "roi", header: "预估 ROI" },
-      ],
-      data: [
-        {
-          channel: channelName,
-          budget,
-          cac: targetCac,
-          cvr: `${customCvr}%`,
-          leads: estimatedLeads,
-          deals: estimatedDeals,
-          revenue: estimatedRevenue,
-          roi: estimatedRoi,
-        },
-      ],
-    });
+  const handleExportSimulation = () => {
+    // 直接走包内 csv 工具导出（clientTools 的 export_csv 是 app 侧 toast 封装，
+    // 组件包不依赖 app 的 toast store；下载行为与 clientTools 完全一致）
+    downloadCsv(
+      `simulation_${channelName}_budget_${budget}.csv`,
+      toCsvContent(
+        ["渠道", "模拟预算 ($)", "预估 CAC ($)", "转化率 (%)", "预期线索数", "预期成交数", "预期营收 ($)", "预估 ROI"],
+        [
+          [
+            channelName,
+            budget,
+            targetCac,
+            `${customCvr}%`,
+            estimatedLeads,
+            estimatedDeals,
+            estimatedRevenue,
+            estimatedRoi,
+          ],
+        ]
+      )
+    );
   };
 
   const handleAskAIToAudit = () => {
@@ -226,3 +223,29 @@ export const ReactiveSimulator: React.FC<ReactiveSimulatorProps> = ({
     </div>
   );
 };
+
+// ===== OpenUI 组件库定义 =====
+export const ReactiveSimulatorDef = defineComponent({
+  name: "ReactiveSimulator",
+  description: "响应式预算模拟与本地实时试算器，集成 OpenUI 响应式状态绑定、表单约束校验与客户端一键导出",
+  props: z.object({
+    title: z.any().optional().describe("试算器标题"),
+    defaultBudget: z.any().optional().describe("默认模拟预算金额"),
+    channelName: z.any().optional().describe("聚焦分析渠道"),
+    currentCac: z.any().optional().describe("基准获客成本 CAC"),
+    cvrRate: z.any().optional().describe("预估转化率"),
+  }),
+  component: ({ props }: { props: Record<string, unknown> }) => {
+    return (
+      <ComponentSafeWrapper name="ReactiveSimulator">
+        <ReactiveSimulator
+          title={props?.title ? String(props.title) : undefined}
+          defaultBudget={typeof props?.defaultBudget === "number" ? props.defaultBudget : Number(props?.defaultBudget) || 50000}
+          channelName={props?.channelName ? String(props.channelName) : "TikTok Ads"}
+          currentCac={typeof props?.currentCac === "number" ? props.currentCac : Number(props?.currentCac) || 20}
+          cvrRate={typeof props?.cvrRate === "number" ? props.cvrRate : Number(props?.cvrRate) || 0.1}
+        />
+      </ComponentSafeWrapper>
+    );
+  },
+});

@@ -3,7 +3,11 @@
 import React from "react";
 import { useTriggerAction } from "@openuidev/react-lang";
 import { ArrowRight, Zap } from "lucide-react";
-import { parseArrayProp } from "@/lib/parseProp";
+import { parseArrayProp } from "../internal/parseProp";
+import { defineComponent } from "@openuidev/react-lang";
+import { z } from "zod";
+import { ComponentSafeWrapper } from "../internal/ComponentSafeWrapper";
+
 
 export interface ActionItem {
   title: string;
@@ -122,3 +126,25 @@ export const ActionPlanCard: React.FC<ActionPlanCardProps> = ({
     </div>
   );
 };
+
+// ===== OpenUI 组件库定义 =====
+export const ActionPlanCardDef = defineComponent({
+  name: "ActionPlanCard",
+  description: "大模型归因后给出的具体落地措施与优化行动清单，支持交互式点击触发进一步深度拆解",
+  props: z.object({
+    title: z.any().optional().describe("行动建议清单标题"),
+    description: z.any().optional().describe("行动清单背景说明"),
+    actions: z.any().optional().describe("行动建议项列表"),
+  }),
+  component: ({ props }: { props: Record<string, unknown> }) => {
+    return (
+      <ComponentSafeWrapper name="ActionPlanCard">
+        <ActionPlanCard
+          title={props?.title ? String(props.title) : undefined}
+          description={props?.description ? String(props.description) : undefined}
+          actions={props?.actions as React.ComponentProps<typeof ActionPlanCard>["actions"]}
+        />
+      </ComponentSafeWrapper>
+    );
+  },
+});

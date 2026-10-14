@@ -1,5 +1,9 @@
 import React from "react";
 import { TrendingUp, TrendingDown, Minus } from "lucide-react";
+import { defineComponent } from "@openuidev/react-lang";
+import { z } from "zod";
+import { ComponentSafeWrapper } from "../internal/ComponentSafeWrapper";
+
 
 export interface MetricCardProps {
   title: string;
@@ -50,3 +54,29 @@ export const MetricCard: React.FC<MetricCardProps> = ({
     </div>
   );
 };
+
+// ===== OpenUI 组件库定义 =====
+export const MetricCardDef = defineComponent({
+  name: "MetricCard",
+  description: "展示单个核心数据指标（KPI）、变化幅度及趋势徽章",
+  props: z.object({
+    title: z.any().optional().describe("指标卡片标题"),
+    value: z.any().optional().describe("指标核心数值"),
+    change: z.any().optional().describe("环比或同比变化率"),
+    trend: z.any().optional().describe("趋势方向"),
+    subtext: z.any().optional().describe("补充说明文本"),
+  }),
+  component: ({ props }: { props: Record<string, unknown> }) => {
+    const title = String(props?.title ?? "核心指标");
+    const value = props?.value !== undefined ? (props.value as string | number) : "-";
+    const change = props?.change ? String(props.change) : undefined;
+    const trend = (["up", "down", "neutral"].includes(String(props?.trend)) ? props.trend : "neutral") as "up" | "down" | "neutral";
+    const subtext = props?.subtext ? String(props.subtext) : undefined;
+
+    return (
+      <ComponentSafeWrapper name="MetricCard">
+        <MetricCard title={title} value={value} change={change} trend={trend} subtext={subtext} />
+      </ComponentSafeWrapper>
+    );
+  },
+});

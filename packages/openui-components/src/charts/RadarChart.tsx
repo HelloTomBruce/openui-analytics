@@ -12,7 +12,11 @@ import {
   Legend,
 } from "recharts";
 import { Compass } from "lucide-react";
-import { parseArrayProp } from "@/lib/parseProp";
+import { parseArrayProp } from "../internal/parseProp";
+import { defineComponent } from "@openuidev/react-lang";
+import { z } from "zod";
+import { ComponentSafeWrapper } from "../internal/ComponentSafeWrapper";
+
 
 export interface RadarSeriesConfig {
   key: string;
@@ -124,3 +128,31 @@ export const RadarChart: React.FC<RadarChartProps> = ({
     </div>
   );
 };
+
+// ===== OpenUI 组件库定义 =====
+export const RadarChartDef = defineComponent({
+  name: "RadarChart",
+  description: "多维能力与指标画像雷达图，用于销售代表综合胜任力、代码仓库质量多维体检与对比",
+  props: z.object({
+    title: z.any().optional().describe("雷达图标题"),
+    description: z.any().optional().describe("图表说明"),
+    data: z.any().optional().describe("结构化极坐标数据数组"),
+    angleKey: z.any().optional().describe("极坐标维度键名，如：metric"),
+    series: z.any().optional().describe("系列配置"),
+    height: z.any().optional().describe("图表容器高度（像素）"),
+  }),
+  component: ({ props }: { props: Record<string, unknown> }) => {
+    return (
+      <ComponentSafeWrapper name="RadarChart">
+        <RadarChart
+          title={props?.title ? String(props.title) : undefined}
+          description={props?.description ? String(props.description) : undefined}
+          data={props?.data as Array<Record<string, unknown>>}
+          angleKey={props?.angleKey ? String(props.angleKey) : "metric"}
+          series={props?.series as React.ComponentProps<typeof RadarChart>["series"]}
+          height={typeof props?.height === "number" ? props.height : 300}
+        />
+      </ComponentSafeWrapper>
+    );
+  },
+});

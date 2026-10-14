@@ -2,9 +2,8 @@
 
 import React, { useRef } from "react";
 import { Renderer } from "@openuidev/react-lang";
-import { analyticsLibrary } from "@/components/analytics";
+import { analyticsLibrary, ErrorBoundary } from "@openui-analytics/components";
 import { clientTools } from "@/lib/clientTools";
-import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { Activity, CheckCircle2, Loader2 } from "lucide-react";
 
 interface OpenUIRendererProps {

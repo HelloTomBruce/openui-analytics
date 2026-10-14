@@ -2,6 +2,10 @@
 
 import React from "react";
 import { Target, CheckCircle2, AlertCircle } from "lucide-react";
+import { defineComponent } from "@openuidev/react-lang";
+import { z } from "zod";
+import { ComponentSafeWrapper } from "../internal/ComponentSafeWrapper";
+
 
 export interface GaugeProgressProps {
   title?: string;
@@ -105,3 +109,31 @@ export const GaugeProgress: React.FC<GaugeProgressProps> = ({
     </div>
   );
 };
+
+// ===== OpenUI 组件库定义 =====
+export const GaugeProgressDef = defineComponent({
+  name: "GaugeProgress",
+  description: "目标达成度与核心进度条组件，用于展示年度/季度 KPI、预算消耗进度与超额达成状况",
+  props: z.object({
+    title: z.any().optional().describe("目标指标标题"),
+    description: z.any().optional().describe("副标题或周期说明"),
+    current: z.any().optional().describe("当前实际完成数值"),
+    target: z.any().optional().describe("预定目标数值"),
+    unit: z.any().optional().describe("指标单位，如：美元、元、单、%"),
+    subtext: z.any().optional().describe("底部辅助说明"),
+  }),
+  component: ({ props }: { props: Record<string, unknown> }) => {
+    return (
+      <ComponentSafeWrapper name="GaugeProgress">
+        <GaugeProgress
+          title={props?.title ? String(props.title) : undefined}
+          description={props?.description ? String(props.description) : undefined}
+          current={props?.current as number | string}
+          target={props?.target as number | string}
+          unit={props?.unit ? String(props.unit) : undefined}
+          subtext={props?.subtext ? String(props.subtext) : undefined}
+        />
+      </ComponentSafeWrapper>
+    );
+  },
+});

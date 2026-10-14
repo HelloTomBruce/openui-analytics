@@ -1,5 +1,9 @@
 import React from "react";
 import { Lightbulb, Info, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { defineComponent } from "@openuidev/react-lang";
+import { z } from "zod";
+import { ComponentSafeWrapper } from "../internal/ComponentSafeWrapper";
+
 
 export interface InsightBoxProps {
   type?: "tip" | "info" | "warning" | "success";
@@ -59,3 +63,31 @@ export const InsightBox: React.FC<InsightBoxProps> = ({
     </div>
   );
 };
+
+// ===== OpenUI 组件库定义 =====
+export const InsightBoxDef = defineComponent({
+  name: "InsightBox",
+  description: "高亮展示关键分析结论、行动建议或异常警报",
+  props: z.object({
+    type: z.any().optional().describe("提示框类型"),
+    title: z.any().optional().describe("提示标题"),
+    content: z.any().optional().describe("提示详细内容与分析洞察"),
+  }),
+  component: ({ props }: { props: Record<string, unknown> }) => {
+    const type = (["tip", "info", "warning", "success"].includes(String(props?.type)) ? props.type : "info") as "tip" | "info" | "warning" | "success";
+    let title = props?.title ? String(props.title) : undefined;
+    let content = props?.content ? String(props.content) : "";
+
+    // 容错：如果只传了 2 个参数 InsightBox("tip", "长文本内容")
+    if (!content && title) {
+      content = title;
+      title = undefined;
+    }
+
+    return (
+      <ComponentSafeWrapper name="InsightBox">
+        <InsightBox type={type} title={title} content={content} />
+      </ComponentSafeWrapper>
+    );
+  },
+});

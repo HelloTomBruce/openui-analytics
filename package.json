@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@ai-sdk/react": "1.1.20",
+    "@openui-analytics/components": "workspace:*",
     "@openui-analytics/datasources": "workspace:*",
     "@openui-analytics/llm": "workspace:*",
     "@openuidev/devtools": "^0.2.2",
@@ -23,7 +24,6 @@
     "openui": "^1.0.4",
     "react": "19.3.0",
     "react-dom": "19.3.0",
-    "recharts": "^3.10.1",
     "tailwind-merge": "^3.7.0",
     "zod": "4.6.5"
   },

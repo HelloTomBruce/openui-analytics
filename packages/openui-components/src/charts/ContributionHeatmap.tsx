@@ -2,7 +2,11 @@
 
 import React, { useState } from "react";
 import { Flame } from "lucide-react";
-import { parseArrayProp } from "@/lib/parseProp";
+import { parseArrayProp } from "../internal/parseProp";
+import { defineComponent } from "@openuidev/react-lang";
+import { z } from "zod";
+import { ComponentSafeWrapper } from "../internal/ComponentSafeWrapper";
+
 
 export interface HeatmapDataPoint {
   date?: string;
@@ -157,3 +161,28 @@ export const ContributionHeatmap: React.FC<ContributionHeatmapProps> = ({
     </div>
   );
 };
+
+// ===== OpenUI 组件库定义 =====
+export const ContributionHeatmapDef = defineComponent({
+  name: "ContributionHeatmap",
+  description: "活跃度与密度热力图，用于研发团队 Commit 活跃度分布、时段流量或高频获客密度分析",
+  props: z.object({
+    title: z.any().optional().describe("热力图标题"),
+    description: z.any().optional().describe("说明描述"),
+    data: z.any().optional().describe("热力分布数据点"),
+    color: z.any().optional().describe("色系主题"),
+  }),
+  component: ({ props }: { props: Record<string, unknown> }) => {
+    const color = (["green", "blue", "purple"].includes(String(props?.color)) ? props.color : "green") as "green" | "blue" | "purple";
+    return (
+      <ComponentSafeWrapper name="ContributionHeatmap">
+        <ContributionHeatmap
+          title={props?.title ? String(props.title) : undefined}
+          description={props?.description ? String(props.description) : undefined}
+          data={props?.data as React.ComponentProps<typeof ContributionHeatmap>["data"]}
+          color={color}
+        />
+      </ComponentSafeWrapper>
+    );
+  },
+});

@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* workspace 组件包在应用根之外，Tailwind v4 需显式声明扫描源 */
+@source "../../packages/openui-components/src";
+
 :root {
   --background: #ffffff;
   --foreground: #171717;

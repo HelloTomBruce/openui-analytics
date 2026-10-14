@@ -1,6 +1,8 @@
 import React from "react";
-import { useSetFieldValue, useTriggerAction } from "@openuidev/react-lang";
+import { useSetFieldValue, useTriggerAction, defineComponent } from "@openuidev/react-lang";
 import { Filter, Play } from "lucide-react";
+import { z } from "zod";
+import { ComponentSafeWrapper } from "../internal/ComponentSafeWrapper";
 
 export interface FilterOption {
   label: string;
@@ -168,3 +170,25 @@ export const AnalyticsFilterBar: React.FC<AnalyticsFilterBarProps> = ({
     </div>
   );
 };
+
+// ===== OpenUI 组件库定义 =====
+export const AnalyticsFilterBarDef = defineComponent({
+  name: "AnalyticsFilterBar",
+  description: "供用户二次过滤渠道、切换指标维度、调整模拟预算并触发 AI 重新计算的交互式表单控件",
+  props: z.object({
+    title: z.any().optional().describe("表单标题"),
+    defaultChannel: z.any().optional().describe("默认选中的渠道"),
+    defaultMetric: z.any().optional().describe("默认选中的指标维度"),
+  }),
+  component: ({ props }: { props: Record<string, unknown> }) => {
+    return (
+      <ComponentSafeWrapper name="AnalyticsFilterBar">
+        <AnalyticsFilterBar
+          title={props?.title ? String(props.title) : undefined}
+          defaultChannel={props?.defaultChannel ? String(props.defaultChannel) : undefined}
+          defaultMetric={props?.defaultMetric ? String(props.defaultMetric) : undefined}
+        />
+      </ComponentSafeWrapper>
+    );
+  },
+});

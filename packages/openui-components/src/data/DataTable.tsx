@@ -2,8 +2,12 @@
 
 import React, { useMemo, useState } from "react";
 import { Search, ArrowUpDown, Download } from "lucide-react";
-import { toCsvContent, downloadCsv } from "@/lib/csv";
-import { parseArrayProp } from "@/lib/parseProp";
+import { toCsvContent, downloadCsv } from "../internal/csv";
+import { parseArrayProp } from "../internal/parseProp";
+import { defineComponent } from "@openuidev/react-lang";
+import { z } from "zod";
+import { ComponentSafeWrapper } from "../internal/ComponentSafeWrapper";
+
 
 export interface ColumnConfig {
   key: string;
@@ -191,3 +195,39 @@ export const DataTable: React.FC<DataTableProps> = ({
     </div>
   );
 };
+
+// ===== OpenUI 组件库定义 =====
+export const DataTableDef = defineComponent({
+  name: "DataTable",
+  description: "交互式明细数据表格，支持前端搜索、列排序和一键导出CSV",
+  props: z.object({
+    title: z.any().optional().describe("表格标题"),
+    columns: z.any().optional().describe("表头定义或数据数组"),
+    data: z.any().optional().describe("行数据数组"),
+    searchable: z.any().optional().describe("是否启用搜索框"),
+  }),
+  component: ({ props }: { props: Record<string, unknown> }) => {
+    const title = props?.title ? String(props.title) : undefined;
+    let columns = props?.columns;
+    let data = props?.data;
+
+    // 容错：如果用户写成 DataTable("标题", data)，2nd 参数为数组时自动处理
+    if (Array.isArray(columns) && (!data || !Array.isArray(data))) {
+      if (columns.length > 0 && typeof columns[0] === "object" && !("header" in columns[0] && "key" in columns[0])) {
+        data = columns;
+        columns = undefined;
+      }
+    }
+
+    return (
+      <ComponentSafeWrapper name="DataTable">
+        <DataTable
+          title={title}
+          columns={columns as React.ComponentProps<typeof DataTable>["columns"]}
+          data={data as React.ComponentProps<typeof DataTable>["data"]}
+          searchable={props?.searchable !== false}
+        />
+      </ComponentSafeWrapper>
+    );
+  },
+});

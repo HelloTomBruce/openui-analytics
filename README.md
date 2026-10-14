@@ -28,7 +28,7 @@
         OpenUIRenderer 流式渐进渲染为可交互看板
 ```
 
-**Workspace 包结构**：服务端能力已抽为两个私有子包——`packages/openui-datasources`（`@openui-analytics/datasources`：数据源配置/连接/工具装配，门面 `createDatasourceManager`）与 `packages/openui-llm`（`@openui-analytics/llm`：LLM 编排与提示词资产，门面 `createAnalyzeHandler`，依赖注入数据源单例）；应用侧 `src/` 只保留路由薄壳、前端 UI 与共享层。
+**Workspace 包结构**：能力已抽为三个私有子包——`packages/openui-datasources`（`@openui-analytics/datasources`：数据源配置/连接/工具装配，门面 `createDatasourceManager`）、`packages/openui-llm`（`@openui-analytics/llm`：LLM 编排与提示词资产，门面 `createAnalyzeHandler`，依赖注入数据源单例）与 `packages/openui-components`（`@openui-analytics/components`：OpenUI 规范展示组件库，按 layout/metrics/charts/data/insight/timeline/interaction 分类，聚合为 `analyticsLibrary` 交给 `<Renderer>` 渲染）；应用侧 `src/` 只保留路由薄壳、前端 UI 与共享层。
 
 详细设计见 [docs/architecture.md](docs/architecture.md)。
 

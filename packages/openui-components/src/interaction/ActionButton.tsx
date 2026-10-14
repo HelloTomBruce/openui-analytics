@@ -1,8 +1,10 @@
 "use client";
 
 import React from "react";
-import { useTriggerAction } from "@openuidev/react-lang";
+import { useTriggerAction, defineComponent } from "@openuidev/react-lang";
 import { Play, Download, Copy, ExternalLink, Zap } from "lucide-react";
+import { z } from "zod";
+import { ComponentSafeWrapper } from "../internal/ComponentSafeWrapper";
 
 export interface ActionButtonProps {
   label: string;
@@ -66,3 +68,29 @@ export const ActionButton: React.FC<ActionButtonProps> = ({
     </button>
   );
 };
+
+// ===== OpenUI 组件库定义 =====
+export const ActionButtonDef = defineComponent({
+  name: "ActionButton",
+  description: "交互动作按钮，支持触发客户端本地工具执行 (Run)、修改状态 (Set) 或向 Agent 发送提示词 (ToAssistant)",
+  props: z.object({
+    label: z.any().optional().describe("按钮文案"),
+    variant: z.any().optional().describe("按钮样式主题"),
+    icon: z.any().optional().describe("图标类型"),
+    prompt: z.any().optional().describe("点击后向 AI 发送的分析提问"),
+    action: z.any().optional().describe("OpenUI 结构化动作流配置"),
+  }),
+  component: ({ props }: { props: Record<string, unknown> }) => {
+    return (
+      <ComponentSafeWrapper name="ActionButton">
+        <ActionButton
+          label={String(props?.label || "点击执行")}
+          variant={props?.variant as React.ComponentProps<typeof ActionButton>["variant"]}
+          icon={props?.icon as React.ComponentProps<typeof ActionButton>["icon"]}
+          prompt={props?.prompt ? String(props.prompt) : undefined}
+          action={props?.action}
+        />
+      </ComponentSafeWrapper>
+    );
+  },
+});

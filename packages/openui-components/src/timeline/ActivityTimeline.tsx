@@ -1,7 +1,11 @@
 "use client";
 
 import { GitCommit, CheckCircle2, AlertTriangle, XCircle, Clock } from "lucide-react";
-import { parseArrayProp } from "@/lib/parseProp";
+import { parseArrayProp } from "../internal/parseProp";
+import { defineComponent } from "@openuidev/react-lang";
+import { z } from "zod";
+import { ComponentSafeWrapper } from "../internal/ComponentSafeWrapper";
+
 
 export interface TimelineItem {
   time: string;
@@ -111,3 +115,25 @@ export const ActivityTimeline: React.FC<ActivityTimelineProps> = ({
     </div>
   );
 };
+
+// ===== OpenUI 组件库定义 =====
+export const ActivityTimelineDef = defineComponent({
+  name: "ActivityTimeline",
+  description: "垂直事件时间线，用于展示 GitLab Merge Request 合并历史、版本发版里程碑或业务事件流",
+  props: z.object({
+    title: z.any().optional().describe("时间线标题"),
+    description: z.any().optional().describe("说明描述"),
+    items: z.any().optional().describe("时间线事件列表"),
+  }),
+  component: ({ props }: { props: Record<string, unknown> }) => {
+    return (
+      <ComponentSafeWrapper name="ActivityTimeline">
+        <ActivityTimeline
+          title={props?.title ? String(props.title) : undefined}
+          description={props?.description ? String(props.description) : undefined}
+          items={props?.items as React.ComponentProps<typeof ActivityTimeline>["items"]}
+        />
+      </ComponentSafeWrapper>
+    );
+  },
+});

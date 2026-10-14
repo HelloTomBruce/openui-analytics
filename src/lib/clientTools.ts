@@ -1,6 +1,6 @@
 "use client";
 
-import { toCsvContent, downloadCsv } from "@/lib/csv";
+import { toCsvContent, downloadCsv } from "@openui-analytics/components";
 import { toast } from "@/lib/toast";
 
 /**
