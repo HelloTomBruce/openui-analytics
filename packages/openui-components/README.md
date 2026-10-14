@@ -7,7 +7,7 @@ OpenUI 规范展示组件库：15 个 `defineComponent` 组件 + 共享容错基
 
 | 目录 | 职能 | 组件 |
 |---|---|---|
-| `src/layout/` | 布局与模板 | `Root`、`MetricGrid`、`ReportLayout`（BI 报表模板） |
+| `src/layout/` | 布局与模板 | `Root`、`MetricGrid` + 模板：`ReportLayout`（报表）、`FocusLayout`（深钻）、`ComparisonLayout`（对比） |
 | `src/metrics/` | 指标类 | `MetricCard`、`GaugeProgress` |
 | `src/charts/` | 图表类（recharts） | `AnalyticsChart`、`FunnelChart`、`RadarChart`、`ContributionHeatmap` |
 | `src/data/` | 数据明细 | `DataTable` |
@@ -21,6 +21,8 @@ OpenUI 规范展示组件库：15 个 `defineComponent` 组件 + 共享容错基
 布局组件作为模板概念：嵌在 `Root` 内、按命名区块（zone）组织内容，LLM 按场景选择。
 
 - `ReportLayout(title, subtitle?, kpis?, charts?, detail?, insights?)` — BI 报表：页头 + KPI 横排（4 列栅格）+ 双列图表（奇数个时末张占满整行）+ 全宽明细 + 结论区。适用于周期性综合复盘。
+- `FocusLayout(title, subtitle?, main, side?, detail?)` — 深钻归因：主图区（2/3 宽）+ 侧栏洞察（1/3 窄列）+ 底部明细。适用于单一主题根因分析（“为什么 X 上升/下降”）。
+- `ComparisonLayout(title, subtitle?, leftLabel, left, rightLabel, right, verdict?)` — 左右对比：带对比对象标签的双栏面板（左蓝/右紫）+ 底部结论区。适用于 A/B 或两实体（渠道/仓库/成员/版本）对比。
 - 不套模板时 = Root 垂直平铺（默认，向后兼容）。
 
 新增模板：在 `layout/` 建文件（区块用 `renderNode(props.xxx)` 渲染），同步 `llm` 包 `serverLibrary.ts` 的 server def（description 写清适用场景，是 LLM 选模板的依据）与 `prompt.ts` 的 few-shot 示例（受 `promptExamples.test.ts` 解析守护）。

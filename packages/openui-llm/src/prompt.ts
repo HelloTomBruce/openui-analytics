@@ -32,6 +32,28 @@ chart = AnalyticsChart("bar", "各渠道成交分布", "Q4 预算分配依据", 
 table = DataTable("渠道明细", [{"key":"channel","header":"渠道"},{"key":"leads","header":"线索数"},{"key":"deals","header":"成交数"},{"key":"cac","header":"CAC ($)","align":"right"}], [{"channel":"TikTok Ads","leads":4200,"deals":186,"cac":16.2},{"channel":"Google Ads","leads":3800,"deals":152,"cac":19.5},{"channel":"线下展会","leads":1100,"deals":118,"cac":28.4}])
 insight = InsightBox("tip", "Q4 预算再分配建议", "TikTok Ads 的 CAC 最低且转化率最高，建议追加 15% 预算；线下展会 ROI 临界，建议压缩并改投内容营销。")`;
 
+/**
+ * 深钻归因 few-shot：单一主题根因分析 → FocusLayout（主图 + 侧栏洞察 + 底部明细）。
+ */
+export const focusLayoutExample = `root = Root([focus])
+focus = FocusLayout("为什么 Q3 CAC 上升", "TikTok Ads 单渠道归因", [chart], [gauge, insight, plan], [table])
+chart = AnalyticsChart("line", "CAC 周趋势", "Q3 逐周 CAC 变化", "week", [{"week":"W27","cac":16.1},{"week":"W31","cac":17.8},{"week":"W35","cac":19.9},{"week":"W39","cac":21.4}], [{"key":"cac","label":"CAC ($)","color":"#3b82f6"}])
+gauge = GaugeProgress("Q4 CAC 控制目标", "目标压回 $18 以下", 21.4, 18, "$", "当前超标 19%")
+insight = InsightBox("warning", "归因结论", "素材疲劳是主因：CTR 由 2.1% 降至 1.4%，CPM 未涨，量级放大 2.4 倍摊薄了精准度。")
+plan = ActionPlanCard("CAC 优化动作", "按影响排序", [{"title":"更换 3 组疲劳素材并 A/B 测试","priority":"high","impact":"预计 CAC -8%","owner":"投放组"},{"title":"收紧相似受众扩量","priority":"medium","impact":"减少低质流量","owner":"投放组"}])
+table = DataTable("高成本低效计划明细", [{"key":"plan","header":"计划"},{"key":"cac","header":"CAC ($)","align":"right"},{"key":"roas","header":"ROAS","align":"right"}], [{"plan":"SP-秋季新品-泛词","cac":27.3,"roas":1.8},{"plan":"SP-竞品截流","cac":24.1,"roas":2.0}])`;
+
+/**
+ * 左右对比 few-shot：两实体横向对比 → ComparisonLayout（带标签双栏 + 底部结论）。
+ */
+export const comparisonLayoutExample = `root = Root([compare])
+compare = ComparisonLayout("TikTok vs Google 渠道效率对比", "2026 Q3 · 获客", "TikTok Ads", [c1, chart1], "Google Ads", [c2, chart2], [verdict])
+c1 = MetricCard("TikTok CAC", "$16.2", "-11.4%", "down", "线索 4,200")
+chart1 = AnalyticsChart("bar", "TikTok 逐月成交", "7-9 月", "month", [{"month":"7月","deals":48},{"month":"8月","deals":61},{"month":"9月","deals":77}], [{"key":"deals","label":"成交数"}])
+c2 = MetricCard("Google CAC", "$19.5", "+4.8%", "up", "线索 3,800")
+chart2 = AnalyticsChart("bar", "Google 逐月成交", "7-9 月", "month", [{"month":"7月","deals":52},{"month":"8月","deals":50},{"month":"9月","deals":50}], [{"key":"deals","label":"成交数"}])
+verdict = InsightBox("tip", "对比结论", "TikTok CAC 更低且增速更快（+60% vs -4%），建议 Q4 预算向 TikTok 倾斜 10-15%；Google 保持品牌词防守。")`;
+
 function dataAccessSection(activeSources: ActiveSourceSummary[]): string {
   const lines: string[] = [];
   let n = 1;
@@ -67,6 +89,8 @@ When a question involves BOTH project progress/quality (ZenTao) AND code activit
 ## Visual Component Kit (OpenUI Lang):
 You have a rich set of declarative components available:
 - **ReportLayout(title, subtitle?, kpis?, charts?, detail?, insights?)**: BI report layout template — page header + KPI strip + 2-col charts zone + full-width detail zone + insights zone. Use it for periodic comprehensive reviews (business/growth/iteration reports). Pass raw MetricCard arrays in kpis (NOT MetricGrid — the template grids them itself).
+- **FocusLayout(title, subtitle?, main, side?, detail?)**: deep-dive layout — wide main chart zone (2/3) + narrow sidebar insights (1/3) + optional bottom detail. Use it for single-topic root-cause analysis / attribution ("why did X rise/drop").
+- **ComparisonLayout(title, subtitle?, leftLabel, left, rightLabel, right, verdict?)**: side-by-side comparison layout with labeled panels + optional verdict zone. Use it for A/B tests or comparing two channels/repos/members/versions.
 - **MetricCard(title, value, change?, trend?, subtext?)**: KPI stats card.
 - **MetricGrid(columns, [cards...])**: 2, 3, or 4 column grid container for MetricCards.
 - **AnalyticsChart(type, title?, description?, xAxisKey?, data, series?, height?)**: Bar, Line, Area, or Pie charts.
@@ -95,7 +119,10 @@ You have a rich set of declarative components available:
    - For commits / MRs / milestone delivery history -> **ActivityTimeline** or **ContributionHeatmap**
    - For multi-attribute profiles / member workload & capability comparison -> **RadarChart**
    - For detailed lists of projects, bugs, stories, tasks -> **DataTable**
-   - For periodic comprehensive reports (monthly/quarterly business, growth, or iteration review covering KPIs + charts + details + conclusions together) -> wrap the zones in **ReportLayout**; for single-topic drill-downs place components directly under Root`;
+   - For periodic comprehensive reports (monthly/quarterly business, growth, or iteration review covering KPIs + charts + details + conclusions together) -> wrap the zones in **ReportLayout**
+   - For single-topic root-cause analysis / attribution ("why did X change") -> **FocusLayout** (main chart + sidebar insights)
+   - For A/B tests or comparing two entities (channels/repos/members/versions) side by side -> **ComparisonLayout** (labeled left/right panels + verdict)
+   - For simple single-topic answers -> place components directly under Root`;
 
   const promptOptions = {
     preamble,
@@ -108,7 +135,7 @@ You have a rich set of declarative components available:
       "Include ReactiveSimulator when the user is asking about budget simulation, CAC projections, or ROI forecasts.",
       "Include ActionPlanCard whenever providing optimization suggestions so users can take concrete next steps.",
     ],
-    examples: [promptExample, reportLayoutExample],
+    examples: [promptExample, reportLayoutExample, focusLayoutExample, comparisonLayoutExample],
   };
 
   return serverLibrary.prompt(promptOptions);

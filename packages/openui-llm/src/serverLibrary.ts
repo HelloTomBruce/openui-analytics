@@ -25,6 +25,36 @@ export const serverReportLayout = defineComponent({
   component: () => null,
 });
 
+export const serverFocusLayout = defineComponent({
+  name: "FocusLayout",
+  description:
+    "深钻归因布局模板：主图区（2/3 宽）+ 侧栏洞察（1/3 窄列）+ 底部明细。适用于单一主题的根因分析与归因（为什么 X 上升/下降）；多主题综合复盘用 ReportLayout",
+  props: z.object({
+    title: z.string().describe("深钻主题标题，如：为什么 Q3 CAC 上升"),
+    subtitle: z.string().optional().describe("聚焦对象或范围说明"),
+    main: z.array(z.any()).optional().describe("主分析区：核心趋势/对比图表数组（AnalyticsChart/FunnelChart/RadarChart）"),
+    side: z.array(z.any()).optional().describe("侧栏洞察：InsightBox/GaugeProgress/MetricCard/ActionPlanCard 数组"),
+    detail: z.array(z.any()).optional().describe("底部全宽明细区：DataTable 数组"),
+  }),
+  component: () => null,
+});
+
+export const serverComparisonLayout = defineComponent({
+  name: "ComparisonLayout",
+  description:
+    "左右对比布局模板：带对比对象标签的双栏面板 + 底部结论区。适用于 A/B 测试、两个渠道/仓库/成员/版本间的横向对比；多主题综合复盘用 ReportLayout",
+  props: z.object({
+    title: z.string().describe("对比主题标题"),
+    subtitle: z.string().optional().describe("对比范围或口径说明"),
+    leftLabel: z.string().optional().describe("左栏对比对象名，如：TikTok Ads"),
+    left: z.array(z.any()).optional().describe("左栏内容数组：MetricCard/AnalyticsChart 等"),
+    rightLabel: z.string().optional().describe("右栏对比对象名，如：Google Ads"),
+    right: z.array(z.any()).optional().describe("右栏内容数组"),
+    verdict: z.array(z.any()).optional().describe("底部结论区：InsightBox 数组"),
+  }),
+  component: () => null,
+});
+
 export const serverMetricCard = defineComponent({
   name: "MetricCard",
   description: "展示单个核心数据指标（KPI）、变化幅度及趋势徽章",
@@ -250,6 +280,8 @@ export const serverLibrary = createLibrary({
   components: [
     serverRoot,
     serverReportLayout,
+    serverFocusLayout,
+    serverComparisonLayout,
     serverMetricCard,
     serverAnalyticsChart,
     serverDataTable,

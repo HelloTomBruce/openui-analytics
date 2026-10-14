@@ -6,7 +6,7 @@
  * 分类目录（新增组件时按职能放入对应目录，文件内同时持有
  * React 组件与其 defineComponent 定义，最后在下方 library 清单注册一行）：
  *
- *   layout/      布局容器      Root、MetricGrid
+ *   layout/      布局与模板    Root、MetricGrid + 布局模板（ReportLayout/FocusLayout/ComparisonLayout）
  *   metrics/     指标类        MetricCard、GaugeProgress
  *   charts/      图表类        AnalyticsChart、FunnelChart、RadarChart、ContributionHeatmap
  *   data/        数据明细      DataTable
@@ -24,6 +24,8 @@ import { createLibrary } from "@openuidev/react-lang";
 import { RootComponent } from "./layout/Root";
 import { MetricGrid, MetricGridDef } from "./layout/MetricGrid";
 import { ReportLayout, ReportLayoutDef } from "./layout/ReportLayout";
+import { FocusLayout, FocusLayoutDef } from "./layout/FocusLayout";
+import { ComparisonLayout, ComparisonLayoutDef } from "./layout/ComparisonLayout";
 // metrics
 import { MetricCard, MetricCardDef } from "./metrics/MetricCard";
 import { GaugeProgress, GaugeProgressDef } from "./metrics/GaugeProgress";
@@ -53,6 +55,8 @@ export const analyticsLibrary = createLibrary({
     RootComponent,
     MetricGridDef,
     ReportLayoutDef,
+    FocusLayoutDef,
+    ComparisonLayoutDef,
     MetricCardDef,
     GaugeProgressDef,
     AnalyticsChartDef,
@@ -74,6 +78,8 @@ export const analyticsLibrary = createLibrary({
 export {
   MetricGrid,
   ReportLayout,
+  FocusLayout,
+  ComparisonLayout,
   MetricCard,
   GaugeProgress,
   AnalyticsChart,
