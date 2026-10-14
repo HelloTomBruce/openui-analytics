@@ -1,0 +1,22 @@
+{
+  "name": "@openui-analytics/llm",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@openui-analytics/datasources": "workspace:*",
+    "@openuidev/lang-core": "^0.3.1",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "typescript": "^5",
+    "vitest": "^5.0.3"
+  }
+}
