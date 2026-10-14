@@ -22,7 +22,7 @@
 
 ## 扩展数据库类型
 
-新增 `src/mcp/db/xxxDialect.ts` 实现 `DbDialect` 接口 → 在 `DIALECTS` 注册表登记 → registry 校验白名单与前端下拉同步。
+新增 `packages/openui-datasources/src/connectors/db/xxxDialect.ts` 实现 `DbDialect` 接口 → 在 `DIALECTS` 注册表登记 → 包 `validateSourceConfig` 校验白名单与前端下拉同步。数据源配置/连接/请求已封装在 workspace 包 `packages/openui-datasources/`（门面 `createDatasourceManager`，统一入口 `@openui-analytics/datasources`）。
 
 ## 安全边界
 
