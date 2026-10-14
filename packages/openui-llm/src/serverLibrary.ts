@@ -10,6 +10,21 @@ export const serverRoot = defineComponent({
   component: () => null,
 });
 
+export const serverReportLayout = defineComponent({
+  name: "ReportLayout",
+  description:
+    "BI 报表布局模板：页头 + KPI 横排区 + 双列图表区 + 全宽明细区 + 结论区。适用于周期性综合复盘（经营/获客/迭代月报季报）；单一主题深钻时直接用 Root 平铺组件",
+  props: z.object({
+    title: z.string().describe("报表标题"),
+    subtitle: z.string().optional().describe("周期或范围说明，如：2026 Q3 · 全渠道"),
+    kpis: z.array(z.any()).optional().describe("KPI 横排区：直接传 MetricCard 数组（模板自动 4 列栅格，勿嵌套 MetricGrid）"),
+    charts: z.array(z.any()).optional().describe("双列图表区：AnalyticsChart/FunnelChart/RadarChart/GaugeProgress 等数组"),
+    detail: z.array(z.any()).optional().describe("全宽明细区：DataTable 数组"),
+    insights: z.array(z.any()).optional().describe("结论区：InsightBox/ActionPlanCard 数组"),
+  }),
+  component: () => null,
+});
+
 export const serverMetricCard = defineComponent({
   name: "MetricCard",
   description: "展示单个核心数据指标（KPI）、变化幅度及趋势徽章",
@@ -234,6 +249,7 @@ export const serverReactiveSimulator = defineComponent({
 export const serverLibrary = createLibrary({
   components: [
     serverRoot,
+    serverReportLayout,
     serverMetricCard,
     serverAnalyticsChart,
     serverDataTable,

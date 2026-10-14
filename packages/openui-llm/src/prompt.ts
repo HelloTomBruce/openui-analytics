@@ -17,6 +17,21 @@ action_plan = ActionPlanCard("迭代风险干预建议", "基于 Bug 收敛速�
 table = DataTable("未关闭 Bug 明细", [{"key":"id","header":"编号"},{"key":"title","header":"标题"},{"key":"severity","header":"严重度"},{"key":"assignedTo","header":"负责人"},{"key":"status","header":"状态"}], [{"id":"BUG-1024","title":"看板图表导出乱码","severity":"严重","assignedTo":"张伟","status":"处理中"},{"id":"BUG-1031","title":"工时统计口径不一致","severity":"一般","assignedTo":"李娜","status":"已确认"}])
 insight = InsightBox("tip", "迭代健康度总结", "Bug 收敛速度高于新增速度，工时分布总体健康，建议优先拦截严重 Bug 并平衡张伟的任务负载。")`;
 
+/**
+ * 布局模板 few-shot：周期性综合复盘 → ReportLayout 报表模板（区块化布局）。
+ * 与 promptExample 一样受 promptExamples.test.ts 全量解析校验守护。
+ */
+export const reportLayoutExample = `root = Root([report])
+report = ReportLayout("Q3 获客渠道复盘", "2026 Q3 · 全渠道 · 数据截至 10-08", [k1, k2, k3, k4], [funnel, chart], [table], [insight])
+k1 = MetricCard("总线索数", "12,480", "+18.2%", "up", "环比 Q2")
+k2 = MetricCard("平均 CAC", "$19.87", "-11.4%", "down", "投放效率提升")
+k3 = MetricCard("线索转化率", "14.6%", "+2.1pp", "up", "线索→成交")
+k4 = MetricCard("营销 ROI", "3.2x", "+0.4", "up", "营收/预算")
+funnel = FunnelChart("Q3 获客转化漏斗", "曝光→线索→商机→成交", [{"name":"曝光","value":128000},{"name":"线索","value":12480,"conversion":"9.8%"},{"name":"商机","value":3120,"conversion":"25.0%"},{"name":"成交","value":456,"conversion":"14.6%"}], "个")
+chart = AnalyticsChart("bar", "各渠道成交分布", "Q4 预算分配依据", "channel", [{"channel":"TikTok Ads","deals":186},{"channel":"Google Ads","deals":152},{"channel":"线下展会","deals":118}], [{"key":"deals","label":"成交数"}])
+table = DataTable("渠道明细", [{"key":"channel","header":"渠道"},{"key":"leads","header":"线索数"},{"key":"deals","header":"成交数"},{"key":"cac","header":"CAC ($)","align":"right"}], [{"channel":"TikTok Ads","leads":4200,"deals":186,"cac":16.2},{"channel":"Google Ads","leads":3800,"deals":152,"cac":19.5},{"channel":"线下展会","leads":1100,"deals":118,"cac":28.4}])
+insight = InsightBox("tip", "Q4 预算再分配建议", "TikTok Ads 的 CAC 最低且转化率最高，建议追加 15% 预算；线下展会 ROI 临界，建议压缩并改投内容营销。")`;
+
 function dataAccessSection(activeSources: ActiveSourceSummary[]): string {
   const lines: string[] = [];
   let n = 1;
@@ -51,6 +66,7 @@ When a question involves BOTH project progress/quality (ZenTao) AND code activit
 
 ## Visual Component Kit (OpenUI Lang):
 You have a rich set of declarative components available:
+- **ReportLayout(title, subtitle?, kpis?, charts?, detail?, insights?)**: BI report layout template — page header + KPI strip + 2-col charts zone + full-width detail zone + insights zone. Use it for periodic comprehensive reviews (business/growth/iteration reports). Pass raw MetricCard arrays in kpis (NOT MetricGrid — the template grids them itself).
 - **MetricCard(title, value, change?, trend?, subtext?)**: KPI stats card.
 - **MetricGrid(columns, [cards...])**: 2, 3, or 4 column grid container for MetricCards.
 - **AnalyticsChart(type, title?, description?, xAxisKey?, data, series?, height?)**: Bar, Line, Area, or Pie charts.
@@ -78,7 +94,8 @@ You have a rich set of declarative components available:
    - For management recommendations / risk mitigation -> **ActionPlanCard**
    - For commits / MRs / milestone delivery history -> **ActivityTimeline** or **ContributionHeatmap**
    - For multi-attribute profiles / member workload & capability comparison -> **RadarChart**
-   - For detailed lists of projects, bugs, stories, tasks -> **DataTable**`;
+   - For detailed lists of projects, bugs, stories, tasks -> **DataTable**
+   - For periodic comprehensive reports (monthly/quarterly business, growth, or iteration review covering KPIs + charts + details + conclusions together) -> wrap the zones in **ReportLayout**; for single-topic drill-downs place components directly under Root`;
 
   const promptOptions = {
     preamble,
@@ -91,7 +108,7 @@ You have a rich set of declarative components available:
       "Include ReactiveSimulator when the user is asking about budget simulation, CAC projections, or ROI forecasts.",
       "Include ActionPlanCard whenever providing optimization suggestions so users can take concrete next steps.",
     ],
-    examples: [promptExample],
+    examples: [promptExample, reportLayoutExample],
   };
 
   return serverLibrary.prompt(promptOptions);

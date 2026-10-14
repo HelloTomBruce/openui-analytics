@@ -23,6 +23,7 @@ import { createLibrary } from "@openuidev/react-lang";
 // layout
 import { RootComponent } from "./layout/Root";
 import { MetricGrid, MetricGridDef } from "./layout/MetricGrid";
+import { ReportLayout, ReportLayoutDef } from "./layout/ReportLayout";
 // metrics
 import { MetricCard, MetricCardDef } from "./metrics/MetricCard";
 import { GaugeProgress, GaugeProgressDef } from "./metrics/GaugeProgress";
@@ -51,6 +52,7 @@ export const analyticsLibrary = createLibrary({
   components: [
     RootComponent,
     MetricGridDef,
+    ReportLayoutDef,
     MetricCardDef,
     GaugeProgressDef,
     AnalyticsChartDef,
@@ -71,6 +73,7 @@ export const analyticsLibrary = createLibrary({
 // ===== 对外导出：React 组件（可脱离 OpenUI DSL 直接在页面使用）=====
 export {
   MetricGrid,
+  ReportLayout,
   MetricCard,
   GaugeProgress,
   AnalyticsChart,

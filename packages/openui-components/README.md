@@ -7,7 +7,7 @@ OpenUI 规范展示组件库：15 个 `defineComponent` 组件 + 共享容错基
 
 | 目录 | 职能 | 组件 |
 |---|---|---|
-| `src/layout/` | 布局容器 | `Root`、`MetricGrid` |
+| `src/layout/` | 布局与模板 | `Root`、`MetricGrid`、`ReportLayout`（BI 报表模板） |
 | `src/metrics/` | 指标类 | `MetricCard`、`GaugeProgress` |
 | `src/charts/` | 图表类（recharts） | `AnalyticsChart`、`FunnelChart`、`RadarChart`、`ContributionHeatmap` |
 | `src/data/` | 数据明细 | `DataTable` |
@@ -15,6 +15,15 @@ OpenUI 规范展示组件库：15 个 `defineComponent` 组件 + 共享容错基
 | `src/timeline/` | 时间线 | `ActivityTimeline` |
 | `src/interaction/` | 交互控件 | `AnalyticsFilterBar`、`ActionButton`、`ReactiveSimulator` |
 | `src/internal/` | 内部支撑（不承诺稳定） | `ErrorBoundary`、`ComponentSafeWrapper`、`parseProp`、`csv` |
+
+## 布局模板（Layout Templates）
+
+布局组件作为模板概念：嵌在 `Root` 内、按命名区块（zone）组织内容，LLM 按场景选择。
+
+- `ReportLayout(title, subtitle?, kpis?, charts?, detail?, insights?)` — BI 报表：页头 + KPI 横排（4 列栅格）+ 双列图表（奇数个时末张占满整行）+ 全宽明细 + 结论区。适用于周期性综合复盘。
+- 不套模板时 = Root 垂直平铺（默认，向后兼容）。
+
+新增模板：在 `layout/` 建文件（区块用 `renderNode(props.xxx)` 渲染），同步 `llm` 包 `serverLibrary.ts` 的 server def（description 写清适用场景，是 LLM 选模板的依据）与 `prompt.ts` 的 few-shot 示例（受 `promptExamples.test.ts` 解析守护）。
 
 ## 如何新增一个展示组件
 
