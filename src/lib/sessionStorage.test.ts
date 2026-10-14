@@ -69,3 +69,10 @@ describe("setSessionEnabledSources", () => {
     expect(getSavedSessions()).toHaveLength(1);
   });
 });
+
+describe("欢迎语 v3", () => {
+  it("引导设置→数据源，不含内置概念", () => {
+    expect(DEFAULT_WELCOME_MESSAGE.content).toContain("设置 → 数据源");
+    expect(DEFAULT_WELCOME_MESSAGE.content).not.toContain("内置");
+  });
+});

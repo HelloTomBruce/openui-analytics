@@ -17,7 +17,7 @@ export const DEFAULT_WELCOME_MESSAGE: Message = {
   id: "welcome",
   role: "assistant",
   content:
-    "👋 你好！我是基于 **Vercel AI SDK**、**OpenUI 完整生态规范** 与 **多数据源 MCP 生态（内置 PostgreSQL / GitLab / 禅道，支持动态配置 MySQL 等更多源）** 构建的对话式数据分析助手。\n\n本系统已深度集成：\n- ⚡ **响应式状态与本地毫秒试算 (Reactive State)**\n- 🛠️ **前端客户端工具直连 (Client Tool Provider)**\n- 📋 **动作流编排与落地清单 (Action Pipelines)**\n- 🔗 **禅道 × GitLab 跨源联合分析 (Cross-Source Insights)**\n- 🔍 **开发者 AST 实时调试检查台 (OpenUI DevTools)**\n- 📊 **流式全链路可观测性 (Observability Metrics)**",
+    "👋 你好！我是基于 **Vercel AI SDK**、**OpenUI 完整生态规范** 与 **动态配置的多数据源 MCP 生态（HTTP MCP / 数据库 / 本地 CLI）** 构建的对话式数据分析助手。在「设置 → 数据源」添加你的数据源后即可开始分析。\n\n本系统已深度集成：\n- ⚡ **响应式状态与本地毫秒试算 (Reactive State)**\n- 🛠️ **前端客户端工具直连 (Client Tool Provider)**\n- 📋 **动作流编排与落地清单 (Action Pipelines)**\n- 🔗 **禅道 × GitLab 跨源联合分析 (Cross-Source Insights)**\n- 🔍 **开发者 AST 实时调试检查台 (OpenUI DevTools)**\n- 📊 **流式全链路可观测性 (Observability Metrics)**",
 };
 
 /**
