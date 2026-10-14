@@ -1,5 +1,6 @@
 import { streamText, tool, jsonSchema, type CoreMessage, type CoreTool } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
+import { createAnthropic } from "@ai-sdk/anthropic";
 import {
   mergeToolSets,
   type ActiveSourceSummary,
@@ -21,6 +22,8 @@ export interface AnalyzeRequestBody {
   model?: string;
   temperature?: number | string;
   sources?: string[];
+  /** 接口协议：anthropic（如 Kimi Coding 的 /v1/messages）或缺省 openai 兼容（/chat/completions） */
+  protocol?: "openai" | "anthropic";
   /** 历史透传字段（如 gitlabUrl/gitlabToken）被忽略的现状保持 */
   [key: string]: unknown;
 }
@@ -41,6 +44,7 @@ export function createAnalyzeHandler(opts: AnalyzeHandlerOptions) {
         model: clientModel,
         temperature: clientTemperature,
         sources: clientSources,
+        protocol: clientProtocol,
       } = (await req.json()) as AnalyzeRequestBody;
 
       const apiKey = clientKey || process.env.OPENAI_API_KEY || process.env.LLM_API_KEY;
@@ -53,7 +57,7 @@ export function createAnalyzeHandler(opts: AnalyzeHandlerOptions) {
           ? Math.min(Math.max(parsedTemp, 0), 2)
           : 0.2;
 
-      console.log("[Analyze API Request]", { model, baseURL, hasApiKey: !!apiKey });
+      console.log("[Analyze API Request]", { model, baseURL, protocol: clientProtocol ?? "openai", hasApiKey: !!apiKey });
 
       // 安全约束：客户端自带 baseURL 时必须同时自带 apiKey。
       // 否则服务端会拿着 env 中的真实 Key 去请求客户端指定的任意 URL —— 凭证外泄通道。
@@ -78,10 +82,16 @@ export function createAnalyzeHandler(opts: AnalyzeHandlerOptions) {
         });
       }
 
-      const openai = createOpenAI({
-        apiKey,
-        baseURL: baseURL.replace(/\/+$/, ""),
-      });
+      // 协议分派：anthropic 端点（如 Kimi Coding，实际路径 /v1/messages，baseURL 自动补 /v1）
+      // 或缺省 openai 兼容端点（/chat/completions，baseURL 去尾斜杠）
+      const normalizedBase = baseURL.replace(/\/+$/, "");
+      const anthropicBase = /\/v1$/.test(normalizedBase)
+        ? normalizedBase
+        : `${normalizedBase}/v1`;
+      const languageModel =
+        clientProtocol === "anthropic"
+          ? createAnthropic({ apiKey, baseURL: anthropicBase })(model)
+          : createOpenAI({ apiKey, baseURL: normalizedBase })(model);
 
       // 会话级数据源：请求 id ∩ 全局启用 ∩ 实际存在；未知 id 忽略并告警
       const activeSources = datasources.resolveActive(
@@ -123,7 +133,7 @@ export function createAnalyzeHandler(opts: AnalyzeHandlerOptions) {
       });
 
       const result = streamText({
-        model: openai(model),
+        model: languageModel,
         system: getOpenUISystemPrompt(summaries),
         // 客户端消息体原样透传（与原实现一致，不做结构校验）
         messages: messages as CoreMessage[],

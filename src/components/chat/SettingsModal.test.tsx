@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/react";
-import { SettingsModal } from "./SettingsModal";
+import { SettingsModal, type SettingsModalProps } from "./SettingsModal";
 
 // mock /api/datasources：返回一个健康数据源，锁定「数据源」tab 状态渲染
 const fetchMock = vi.fn().mockResolvedValue({
@@ -12,7 +12,7 @@ const fetchMock = vi.fn().mockResolvedValue({
   }),
 });
 
-function renderModal() {
+function renderModal(props: Partial<SettingsModalProps> = {}) {
   return render(
     <SettingsModal
       apiKey="sk-test"
@@ -20,16 +20,21 @@ function renderModal() {
       model="gpt-4o-mini"
       accessToken=""
       temperature="0.2"
+      protocol="openai"
       onApiKeyChange={vi.fn()}
       onBaseURLChange={vi.fn()}
       onModelChange={vi.fn()}
       onAccessTokenChange={vi.fn()}
       onTemperatureChange={vi.fn()}
+      onProtocolChange={vi.fn()}
       onSave={vi.fn()}
       onClose={vi.fn()}
+      {...props}
     />
   );
 }
+
+afterEach(cleanup);
 
 describe("SettingsModal tab 布局", () => {
   beforeEach(() => {
@@ -90,25 +95,42 @@ describe("SettingsModal tab 布局", () => {
   it("底部按钮触发 onClose / onSave", () => {
     const onClose = vi.fn();
     const onSave = vi.fn();
-    render(
-      <SettingsModal
-        apiKey=""
-        baseURL=""
-        model=""
-        accessToken=""
-        temperature="0.2"
-        onApiKeyChange={vi.fn()}
-        onBaseURLChange={vi.fn()}
-        onModelChange={vi.fn()}
-        onAccessTokenChange={vi.fn()}
-        onTemperatureChange={vi.fn()}
-        onSave={onSave}
-        onClose={onClose}
-      />
-    );
+    renderModal({ onSave, onClose });
     fireEvent.click(screen.getByRole("button", { name: "取消" }));
     fireEvent.click(screen.getByRole("button", { name: "保存配置" }));
     expect(onClose).toHaveBeenCalledTimes(1);
     expect(onSave).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("SettingsModal 协议类型", () => {
+  it("默认选中 OpenAI 兼容，baseURL 占位符为 OpenAI 形态", () => {
+    renderModal();
+
+    const openaiBtn = screen.getByRole("radio", { name: /OpenAI 兼容/i });
+    const anthropicBtn = screen.getByRole("radio", { name: /Anthropic/i });
+    expect(openaiBtn).toBeChecked();
+    expect(anthropicBtn).not.toBeChecked();
+    expect(screen.getByLabelText(/Base URL/i)).toHaveAttribute(
+      "placeholder",
+      "https://api.openai.com/v1"
+    );
+  });
+
+  it("点击 Anthropic 调用 onProtocolChange('anthropic')，占位符随 protocol 切换为 Anthropic 形态", () => {
+    const onProtocolChange = vi.fn();
+    renderModal({ onProtocolChange });
+
+    fireEvent.click(screen.getByRole("radio", { name: /Anthropic/i }));
+
+    expect(onProtocolChange).toHaveBeenCalledWith("anthropic");
+
+    // 受控组件：以 protocol="anthropic" 重渲染后占位符切换
+    cleanup();
+    renderModal({ protocol: "anthropic" });
+    expect(screen.getByLabelText(/Base URL/i)).toHaveAttribute(
+      "placeholder",
+      "https://api.kimi.com/coding"
+    );
   });
 });

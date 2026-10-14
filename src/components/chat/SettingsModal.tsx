@@ -4,17 +4,20 @@ import React, { useState } from "react";
 import { X, Sliders, Key, Globe, Bot, Database } from "lucide-react";
 import { DatasourceSettings } from "./datasources/DatasourceSettings";
 
-interface SettingsModalProps {
+export interface SettingsModalProps {
   apiKey: string;
   baseURL: string;
   model: string;
   accessToken: string;
   temperature: string;
+  /** 接口协议：openai 兼容（/chat/completions）或 anthropic（/v1/messages，如 Kimi Coding） */
+  protocol: "openai" | "anthropic";
   onApiKeyChange: (v: string) => void;
   onBaseURLChange: (v: string) => void;
   onModelChange: (v: string) => void;
   onAccessTokenChange: (v: string) => void;
   onTemperatureChange: (v: string) => void;
+  onProtocolChange: (v: "openai" | "anthropic") => void;
   onSave: () => void;
   onClose: () => void;
 }
@@ -32,11 +35,13 @@ export function SettingsModal({
   model,
   accessToken,
   temperature,
+  protocol,
   onApiKeyChange,
   onBaseURLChange,
   onModelChange,
   onAccessTokenChange,
   onTemperatureChange,
+  onProtocolChange,
   onSave,
   onClose,
 }: SettingsModalProps) {
@@ -124,6 +129,35 @@ export function SettingsModal({
               />
             </div>
 
+            <fieldset>
+              <legend className="block text-slate-500 mb-1 font-medium flex items-center gap-1">
+                <Sliders className="w-3.5 h-3.5" />
+                <span>接口协议</span>
+              </legend>
+              <div className="flex gap-4" role="radiogroup" aria-label="接口协议">
+                <label className="flex items-center gap-1.5 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="settings-protocol"
+                    checked={protocol === "openai"}
+                    onChange={() => onProtocolChange("openai")}
+                    className="accent-blue-600"
+                  />
+                  <span>OpenAI 兼容</span>
+                </label>
+                <label className="flex items-center gap-1.5 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="settings-protocol"
+                    checked={protocol === "anthropic"}
+                    onChange={() => onProtocolChange("anthropic")}
+                    className="accent-blue-600"
+                  />
+                  <span>Anthropic</span>
+                </label>
+              </div>
+            </fieldset>
+
             <div>
               <label htmlFor="settings-base-url" className="block text-slate-500 mb-1 font-medium flex items-center gap-1">
                 <Globe className="w-3.5 h-3.5" />
@@ -134,7 +168,11 @@ export function SettingsModal({
                 type="text"
                 value={baseURL}
                 onChange={(e) => onBaseURLChange(e.target.value)}
-                placeholder="https://api.openai.com/v1"
+                placeholder={
+                  protocol === "anthropic"
+                    ? "https://api.kimi.com/coding"
+                    : "https://api.openai.com/v1"
+                }
                 className="w-full p-2.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 font-mono"
               />
             </div>

@@ -53,6 +53,10 @@ vi.mock("@ai-sdk/openai", () => ({
   createOpenAI: vi.fn(() => vi.fn()),
 }));
 
+vi.mock("@ai-sdk/anthropic", () => ({
+  createAnthropic: vi.fn(() => vi.fn()),
+}));
+
 vi.mock("ai", async (importOriginal) => {
   const actual = await importOriginal<typeof import("ai")>();
   return {
@@ -198,6 +202,31 @@ describe("createAnalyzeHandler 全动态装配", () => {
     expect(manager.tools).toHaveBeenCalledWith(TEST_DYNAMIC_HTTP);
     const arg = vi.mocked(streamText).mock.calls[0][0];
     expect(Object.keys(arg.tools ?? {})).toContain("cross_source_link");
+  });
+
+  it("protocol=anthropic 时走 createAnthropic 且 baseURL 规范化补 /v1，不调 createOpenAI", async () => {
+    const { createAnthropic } = await import("@ai-sdk/anthropic");
+    const { createOpenAI } = await import("@ai-sdk/openai");
+    const manager = await makeFakeManager();
+    const POST = createAnalyzeHandler({ datasources: manager });
+
+    await POST(
+      makeRequest({
+        messages: [],
+        apiKey: "k",
+        baseURL: "https://api.kimi.com/coding/",
+        protocol: "anthropic",
+      })
+    );
+
+    expect(createAnthropic).toHaveBeenCalledWith(
+      expect.objectContaining({
+        apiKey: "k",
+        baseURL: "https://api.kimi.com/coding/v1",
+      })
+    );
+    expect(createOpenAI).not.toHaveBeenCalled();
+    expect(streamText).toHaveBeenCalledTimes(1);
   });
 
   it("sources 指定动态源时装载其工具并入 tools，prompt 列出该源", async () => {
