@@ -14,12 +14,6 @@
 2. **管理 API**：`POST/GET /api/datasources`、`PATCH/DELETE /api/datasources/:id`（配置 `OPENUI_API_AUTH_TOKEN` 后需 Bearer 头）
 3. **直接改 JSON**：改完重启；id 规则 `^[a-z][a-z0-9-]{0,31}$`
 
-## v2 → v3 迁移（读时自动）
-
-- `builtin.zentao-cli` 启用 → 自动种子 stdio-cli 源
-- `builtin.gitlab-mcp` 启用且 env 有 `GITLAB_MCP_URL` → 种子 http-mcp 源
-- `builtin.postgres`（演示库）→ 移除；其余 `sources[]` 原样保留
-
 ## 扩展数据库类型
 
 新增 `packages/openui-datasources/src/connectors/db/xxxDialect.ts` 实现 `DbDialect` 接口 → 在 `DIALECTS` 注册表登记 → 包 `validateSourceConfig` 校验白名单与前端下拉同步。数据源配置/连接/请求已封装在 workspace 包 `packages/openui-datasources/`（门面 `createDatasourceManager`，统一入口 `@openui-analytics/datasources`）。

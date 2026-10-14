@@ -45,61 +45,13 @@ describe("配置模型 v3（无 builtin）", () => {
     vi.unstubAllEnvs();
   });
 
-  it("v2 迁移：zentao-cli 种子化、postgres 丢弃、动态源原样保留、无 gitlab（env 未设）", () => {
+  it("v2 残留文件：builtin 段被忽略（不再种子），sources 原样保留", () => {
     const file = writeTempConfig(V2_FILE);
     const cfg = loadConfigFile(file);
 
-    expect(cfg).not.toHaveProperty("builtin");
     const ids = cfg.sources.map((s) => s.id);
-    expect(ids).toContain("zhaobiao");
-    expect(ids).toContain("zentao-cli");
-    expect(ids).not.toContain("postgres");
-    expect(ids).not.toContain("gitlab-mcp");
-
-    const zhaobiao = cfg.sources.find((s) => s.id === "zhaobiao");
-    expect(zhaobiao).toEqual(ZHAOBIAO_SOURCE);
-    const zentao = cfg.sources.find((s) => s.id === "zentao-cli");
-    expect(zentao).toEqual({
-      id: "zentao-cli",
-      name: "ZenTao 禅道 CLI MCP (本地)",
-      kind: "stdio-cli",
-      command: "zentao",
-      args: ["mcp", "--read-only"],
-      enabled: true,
-    });
-  });
-
-  it("v2 迁移：env 有 GITLAB_MCP_URL 时 gitlab 种子化（含 env token）", () => {
-    vi.stubEnv("GITLAB_MCP_URL", "http://10.0.0.9:5002/mcp");
-    vi.stubEnv("GITLAB_TOKEN", "glpat-env");
-    const file = writeTempConfig(V2_FILE);
-
-    const gitlab = loadConfigFile(file).sources.find(
-      (s) => s.id === "gitlab-mcp"
-    );
-
-    expect(gitlab).toEqual({
-      id: "gitlab-mcp",
-      name: "GitLab MCP (外部)",
-      kind: "http-mcp",
-      url: "http://10.0.0.9:5002/mcp",
-      token: "glpat-env",
-      enabled: true,
-    });
-  });
-
-  it("v2 迁移：gitlab 停用时不种子", () => {
-    const file = writeTempConfig(
-      JSON.stringify({
-        builtin: {
-          postgres: { enabled: true },
-          "gitlab-mcp": { enabled: false },
-          "zentao-cli": { enabled: true },
-        },
-        sources: [],
-      })
-    );
-    const ids = loadConfigFile(file).sources.map((s) => s.id);
+    expect(ids).toEqual(["zhaobiao"]);
+    expect(ids).not.toContain("zentao-cli");
     expect(ids).not.toContain("gitlab-mcp");
   });
 

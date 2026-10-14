@@ -2,8 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 
 /**
- * 数据源配置模型 v3 + 纯函数读写层（自 src/mcp/registry.ts 配置半区迁移）。
- * 无模块级可变状态：路径与缓存由调用方（manager 实例）持有。
+ * 数据源配置模型 v3 + 纯函数读写层。
+ * 仅认 v3（{ sources: [...] }）；无模块级可变状态，路径与缓存由调用方（manager 实例）持有。
  */
 
 export interface HttpMcpSourceConfig {
@@ -46,15 +46,29 @@ export type ValidateResult =
   | { ok: true; config: DynamicSourceConfig }
   | { ok: false; errors: string[] };
 
-/** v2 builtin 段的迁移种子定义（读时一次性，不落盘重写 v2 文件） */
-const ZENTAO_SEED: StdioCliSourceConfig = {
-  id: "zentao-cli",
-  name: "ZenTao 禅道 CLI MCP (本地)",
-  kind: "stdio-cli",
-  command: "zentao",
-  args: ["mcp", "--read-only"],
-  enabled: true,
-};
+/** 旧格式兼容：仅取 sources[] 并规范化；其余顶层字段（含历史 v2 builtin 段）静默忽略 */
+function normalizeConfig(parsed: unknown): DatasourcesConfig {
+  if (!parsed || typeof parsed !== "object") return defaultConfig();
+  const o = parsed as Record<string, unknown>;
+
+  const sources: DynamicSourceConfig[] = Array.isArray(o.sources)
+    ? o.sources
+        .map(normalizeSourceEntry)
+        .filter((s): s is DynamicSourceConfig => s !== null)
+    : [];
+
+  return { sources };
+}
+
+/** 读取配置文件；文件缺失/损坏返回空配置。 */
+export function loadConfigFile(configPath: string): DatasourcesConfig {
+  try {
+    const raw = fs.readFileSync(configPath, "utf-8");
+    return normalizeConfig(JSON.parse(raw));
+  } catch {
+    return defaultConfig();
+  }
+}
 
 function defaultConfig(): DatasourcesConfig {
   return { sources: [] };
@@ -100,54 +114,6 @@ function normalizeSourceEntry(entry: unknown): DynamicSourceConfig | null {
     return { id, name, kind: "stdio-cli", command: o.command, args, enabled };
   }
   return null;
-}
-
-/** v2/v3 统一迁移：v2（有 builtin 段）按种子规则转换；损坏输入返回空配置 */
-function migrateConfig(parsed: unknown): DatasourcesConfig {
-  if (!parsed || typeof parsed !== "object") return defaultConfig();
-  const o = parsed as Record<string, unknown> & {
-    builtin?: Record<string, { enabled?: boolean }>;
-  };
-
-  const sources: DynamicSourceConfig[] = Array.isArray(o.sources)
-    ? o.sources
-        .map(normalizeSourceEntry)
-        .filter((s): s is DynamicSourceConfig => s !== null)
-    : [];
-
-  // v2 builtin 段存在 → 迁移种子
-  if (o.builtin && typeof o.builtin === "object") {
-    if (o.builtin["zentao-cli"]?.enabled) {
-      sources.push({ ...ZENTAO_SEED });
-    }
-    const gitlabUrl = process.env.GITLAB_MCP_URL;
-    if (o.builtin["gitlab-mcp"]?.enabled && gitlabUrl) {
-      sources.push({
-        id: "gitlab-mcp",
-        name: "GitLab MCP (外部)",
-        kind: "http-mcp",
-        url: gitlabUrl,
-        token:
-          process.env.GITLAB_TOKEN ||
-          process.env.GITLAB_API_KEY ||
-          "",
-        enabled: true,
-      });
-    }
-    // builtin.postgres：演示库已移除，丢弃
-  }
-
-  return { sources };
-}
-
-/** 读取配置文件；v2 自动迁移；文件缺失/损坏返回空配置。 */
-export function loadConfigFile(configPath: string): DatasourcesConfig {
-  try {
-    const raw = fs.readFileSync(configPath, "utf-8");
-    return migrateConfig(JSON.parse(raw));
-  } catch {
-    return defaultConfig();
-  }
 }
 
 /** 原子写：tmp + rename；同步 fs 调用单进程内天然串行 */
