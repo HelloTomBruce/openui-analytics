@@ -23,7 +23,9 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # vitest 5 要求 ^22.12 || ^24 || >=26（Node 20 缺少内部
+          # webidl.util.markAsUncloneable，forks worker 无法启动）
+          node-version: 22
           cache: "pnpm"
 
       - name: Install dependencies
