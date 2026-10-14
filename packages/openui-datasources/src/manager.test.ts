@@ -302,6 +302,18 @@ describe("manager 工具装配", () => {
     );
   });
 
+  it("tools() 同配置重复调用复用已构建工具集（零额外 listTools 往返）", async () => {
+    const fake = makeFakeMcpClient("jira_search");
+    vi.mocked(connectHttpMcp).mockResolvedValue(fake as never);
+    const m = managerFor(JSON.stringify({ sources: [HTTP_SOURCE] }));
+
+    const first = await m.tools(HTTP_SOURCE);
+    const second = await m.tools(HTTP_SOURCE);
+
+    expect(second).toBe(first);
+    expect(fake.listTools).toHaveBeenCalledTimes(1);
+  });
+
   it("close 关闭并清空缓存，未知 id 不抛", async () => {
     const fake = makeFakeMcpClient();
     vi.mocked(connectHttpMcp).mockResolvedValue(fake as never);

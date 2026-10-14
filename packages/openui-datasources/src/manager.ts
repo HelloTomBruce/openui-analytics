@@ -91,6 +91,8 @@ const HEALTH_TIMEOUT_MS = 3000;
 interface ConnCacheEntry {
   key: string;
   connection: McpConnection;
+  /** 已构建的工具绑定缓存：配置不变时零额外 listTools 往返（与旧 CacheEntry 同语义） */
+  bindings?: McpToolBinding[];
 }
 
 /** 缓存键 = 完整配置的 JSON 形态；配置变更即视为不同连接 */
@@ -268,12 +270,12 @@ export function createDatasourceManager(opts: {
     configCache = c;
   };
 
-  const getOrConnect = async (
+  const getOrConnectEntry = async (
     source: DynamicSourceConfig
-  ): Promise<McpConnection> => {
+  ): Promise<ConnCacheEntry> => {
     const key = configKey(source);
     const cached = connCache.get(source.id);
-    if (cached && cached.key === key) return cached.connection;
+    if (cached && cached.key === key) return cached;
 
     if (cached) {
       connCache.delete(source.id);
@@ -290,8 +292,9 @@ export function createDatasourceManager(opts: {
         : source.kind === "db"
           ? await connectDbSource(source)
           : await connectStdioSource(source);
-    connCache.set(source.id, { key, connection });
-    return connection;
+    const entry: ConnCacheEntry = { key, connection };
+    connCache.set(source.id, entry);
+    return entry;
   };
 
   return {
@@ -319,12 +322,14 @@ export function createDatasourceManager(opts: {
     list() {
       return readConfig().sources.map(describeDynamicSource);
     },
-    connect: getOrConnect,
+    connect: (s) => getOrConnectEntry(s).then((e) => e.connection),
     async tools(source) {
-      const connection = await getOrConnect(source);
+      const entry = await getOrConnectEntry(source);
+      if (entry.bindings) return entry.bindings;
+      const connection = entry.connection;
       const mcpTools = await connection.listTools();
       const logPrefix = `Dynamic ${source.id}`;
-      return mcpTools.map((t) => ({
+      const bindings = mcpTools.map((t) => ({
         name: `${source.id}_${t.name}`,
         originalName: t.name,
         description: t.description,
@@ -335,6 +340,8 @@ export function createDatasourceManager(opts: {
           return parseMcpToolResult(res, `MCP tool ${t.name}`);
         },
       }));
+      entry.bindings = bindings;
+      return bindings;
     },
     async close(id) {
       const entry = connCache.get(id);
