@@ -10,8 +10,10 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@ai-sdk/openai": "1.1.15",
     "@openui-analytics/datasources": "workspace:*",
     "@openuidev/lang-core": "^0.3.1",
+    "ai": "4.1.54",
     "zod": "4.6.5"
   },
   "devDependencies": {

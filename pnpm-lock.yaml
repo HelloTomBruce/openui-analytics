@@ -291,12 +291,18 @@ importers:
 
   packages/openui-llm:
     dependencies:
+      '@ai-sdk/openai':
+        specifier: 1.1.15
+        version: 1.1.15(zod@4.6.5)
       '@openui-analytics/datasources':
         specifier: workspace:*
         version: link:../openui-datasources
       '@openuidev/lang-core':
         specifier: ^0.3.1
         version: 0.3.1(@modelcontextprotocol/sdk@1.32.1(supports-color@7.2.0)(zod@4.6.5))(zod@4.6.5)
+      ai:
+        specifier: 4.1.54
+        version: 4.1.54(react@19.3.0)(zod@4.6.5)
       zod:
         specifier: 4.6.5
         version: 4.6.5
