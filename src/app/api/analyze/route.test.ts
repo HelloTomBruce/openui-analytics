@@ -1,18 +1,8 @@
 // @vitest-environment node
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { POST } from "./route";
-import { getDynamicSourceTools } from "@/mcp/dynamicSources";
+import { datasources } from "@/lib/datasources";
 import { streamText } from "ai";
-
-vi.mock("@/mcp/dynamicSources", async (importOriginal) => {
-  const actual = await importOriginal<
-    typeof import("@/mcp/dynamicSources")
-  >();
-  return {
-    ...actual,
-    getDynamicSourceTools: vi.fn(async () => ({})),
-  };
-});
 
 const TEST_DYNAMIC_HTTP = {
   id: "jira",
@@ -23,16 +13,42 @@ const TEST_DYNAMIC_HTTP = {
   enabled: true,
 };
 
-vi.mock("@/mcp/registry", async (importOriginal) => {
-  const actual = await importOriginal<
-    typeof import("@/mcp/registry")
-  >();
+// 接缝 mock：真实 manager（读临时配置文件，resolveActive/get 走真实现），
+// 仅 tools（IO）替换为 mock —— 等价于原 readDatasourcesConfig/getDynamicSourceConfig mock
+// 注意：工厂执行期（模块导入时）顶层常量与顶层 import 均未初始化，
+// 工厂内所需模块一律动态 import、配置内容内联
+vi.mock("@/lib/datasources", async () => {
+  const [{ createDatasourceManager }, fs, os, path] = await Promise.all([
+    import("@openui-analytics/datasources"),
+    import("node:fs"),
+    import("node:os"),
+    import("node:path"),
+  ]);
+  const file = path.join(
+    fs.mkdtempSync(path.join(os.tmpdir(), "analyze-route-")),
+    "datasources.json"
+  );
+  fs.writeFileSync(
+    file,
+    JSON.stringify({
+      sources: [
+        {
+          id: "jira",
+          name: "Jira MCP",
+          kind: "http-mcp",
+          url: "http://10.0.0.1:6000/mcp",
+          token: "",
+          enabled: true,
+        },
+      ],
+    })
+  );
+  const real = createDatasourceManager({ configPath: file });
   return {
-    ...actual,
-    readDatasourcesConfig: vi.fn(() => ({
-      sources: [TEST_DYNAMIC_HTTP],
-    })),
-    getDynamicSourceConfig: vi.fn(() => TEST_DYNAMIC_HTTP),
+    datasources: {
+      ...real,
+      tools: vi.fn(async () => []),
+    },
   };
 });
 
@@ -94,7 +110,7 @@ describe("POST /api/analyze", () => {
   });
 
   it("动态源工具加载失败时降级为空工具集并正常流式响应", async () => {
-    vi.mocked(getDynamicSourceTools).mockRejectedValueOnce(
+    vi.mocked(datasources.tools).mockRejectedValueOnce(
       new Error("connection refused")
     );
 
@@ -151,7 +167,7 @@ describe("POST /api/analyze", () => {
 
     expect(res.status).toBe(200);
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("nope"));
-    expect(getDynamicSourceTools).not.toHaveBeenCalled();
+    expect(datasources.tools).not.toHaveBeenCalled();
     warnSpy.mockRestore();
   });
 });
@@ -175,21 +191,27 @@ describe("POST /api/analyze 全动态装配", () => {
       })
     );
 
-    expect(getDynamicSourceTools).toHaveBeenCalledWith(TEST_DYNAMIC_HTTP);
+    expect(datasources.tools).toHaveBeenCalledWith(TEST_DYNAMIC_HTTP);
     const arg = vi.mocked(streamText).mock.calls[0][0];
     expect(Object.keys(arg.tools ?? {})).toContain("cross_source_link");
   });
 
   it("sources 指定动态源时装载其工具并入 tools，prompt 列出该源", async () => {
-    vi.mocked(getDynamicSourceTools).mockResolvedValueOnce({
-      jira_jira_search: { description: "d" } as never,
-    });
+    vi.mocked(datasources.tools).mockResolvedValueOnce([
+      {
+        name: "jira_jira_search",
+        originalName: "jira_search",
+        description: "d",
+        inputSchema: { type: "object" },
+        call: async () => ({}),
+      },
+    ]);
 
     await POST(
       makeRequest({ messages: [], apiKey: "k", sources: ["jira"] })
     );
 
-    expect(getDynamicSourceTools).toHaveBeenCalledWith(TEST_DYNAMIC_HTTP);
+    expect(datasources.tools).toHaveBeenCalledWith(TEST_DYNAMIC_HTTP);
     const arg = vi.mocked(streamText).mock.calls[0][0];
     expect(Object.keys(arg.tools ?? {})).toContain("jira_jira_search");
     expect(arg.system).toContain("Jira MCP");

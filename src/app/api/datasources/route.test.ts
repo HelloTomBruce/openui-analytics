@@ -1,34 +1,46 @@
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { GET, POST } from "./route";
-import {
-  listDataSources,
-  upsertDynamicSource,
-  getDynamicSourceConfig,
-} from "@/mcp/registry";
+import { datasources } from "@/lib/datasources";
 
-// partial mock：纯函数（validate/mask/describe）走真实实现，IO（探活/读写配置）走 mock
-vi.mock("@/mcp/registry", async (importOriginal) => {
-  const actual = await importOriginal<
-    typeof import("@/mcp/registry")
-  >();
+// 接缝 mock：纯函数（validate/describe/mask）走真实包实现，IO（探活/读写配置）走 mock
+vi.mock("@/lib/datasources", async () => {
+  const { validateSourceConfig } = await import(
+    "@openui-analytics/datasources"
+  );
   return {
-    ...actual,
-listDataSources: vi.fn(() => [
-      { id: "pg-a", name: "PostgreSQL 分析库", kind: "db", dbType: "postgres", tools: [], enabled: true },
-      { id: "zentao-cli", name: "禅道", kind: "stdio-cli", command: "zentao", tools: [], enabled: true },
-      { id: "gitlab", name: "GitLab MCP", kind: "http-mcp", tools: [], enabled: true },
-    ]),
-    checkDataSourceHealth: vi.fn(async () => ({ ok: true, latencyMs: 5 })),
-    upsertDynamicSource: vi.fn(),
-    getDynamicSourceConfig: vi.fn(() => undefined),
+    datasources: {
+      validate: vi.fn(validateSourceConfig),
+      list: vi.fn(() => [
+        { id: "pg-a", name: "PostgreSQL 分析库", kind: "db", dbType: "postgres", tools: [], enabled: true },
+        { id: "zentao-cli", name: "禅道", kind: "stdio-cli", command: "zentao", tools: [], enabled: true },
+        { id: "gitlab", name: "GitLab MCP", kind: "http-mcp", tools: [], enabled: true },
+      ]),
+      health: vi.fn(async () => ({ ok: true, latencyMs: 5 })),
+      // 默认不存在（POST 新建的 409 判定依赖）；GET 用例内按需返回配置
+      get: vi.fn(() => undefined),
+      upsert: vi.fn(),
+    },
   };
 });
 
 const BASE = "http://localhost:3006/api/datasources";
 
 describe("GET /api/datasources", () => {
+  beforeEach(() => {
+    // GET 探活需要按 id 取回配置（原实现里探活内部自查找）
+    vi.mocked(datasources.get).mockImplementation((id: string) => ({
+      id,
+      name: id,
+      kind: "http-mcp" as const,
+      url: "http://x/mcp",
+      token: "",
+      enabled: true,
+    }));
+  });
+
   afterEach(() => {
     vi.clearAllMocks();
+    vi.mocked(datasources.get).mockImplementation(() => undefined);
   });
 
   it("返回所有数据源与健康状态", async () => {
@@ -41,7 +53,7 @@ describe("GET /api/datasources", () => {
   });
 
   it("动态源响应不泄露 token 明文与连接串密码", async () => {
-    vi.mocked(listDataSources).mockReturnValueOnce([
+    vi.mocked(datasources.list).mockReturnValueOnce([
       { id: "pg-a", name: "PostgreSQL 分析库", kind: "db", dbType: "postgres", tools: [], enabled: true },
       {
         id: "jira",
@@ -101,7 +113,7 @@ describe("POST /api/datasources", () => {
       maskedUrl: "http://10.0.0.1:6000/mcp",
     });
     expect(JSON.stringify(body)).not.toContain("glpat-secret");
-    expect(upsertDynamicSource).toHaveBeenCalledTimes(1);
+    expect(datasources.upsert).toHaveBeenCalledTimes(1);
   });
 
   it("合法 db 源创建成功，连接串脱敏返回", async () => {
@@ -129,7 +141,7 @@ describe("POST /api/datasources", () => {
   });
 
   it("重复 id 返回 409", async () => {
-    vi.mocked(getDynamicSourceConfig).mockReturnValueOnce({
+    vi.mocked(datasources.get).mockReturnValueOnce({
       id: "jira",
       name: "已有",
       kind: "http-mcp",
@@ -151,7 +163,7 @@ describe("POST /api/datasources", () => {
     );
 
     expect(res.status).toBe(409);
-    expect(upsertDynamicSource).not.toHaveBeenCalled();
+    expect(datasources.upsert).not.toHaveBeenCalled();
   });
 
   it("非法配置返回 400 与错误列表", async () => {

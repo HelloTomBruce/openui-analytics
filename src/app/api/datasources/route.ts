@@ -1,11 +1,5 @@
-import {
-  listDataSources,
-  checkDataSourceHealth,
-  validateDynamicSourceConfig,
-  upsertDynamicSource,
-  getDynamicSourceConfig,
-  describeDynamicSource,
-} from "@/mcp/registry";
+import { datasources } from "@/lib/datasources";
+import { describeDynamicSource } from "@openui-analytics/datasources";
 
 /**
  * GET /api/datasources
@@ -13,14 +7,17 @@ import {
  * 永不回传明文 token 与连接串密码。
  */
 export async function GET() {
-  const sources = listDataSources();
+  const sources = datasources.list();
   const entries = await Promise.all(
     sources.map(async (s) => {
-      const health = await checkDataSourceHealth(s.id).catch(() => ({
-        ok: false,
-        latencyMs: 0,
-        error: "probe crashed",
-      }));
+      const conf = datasources.get(s.id);
+      const health = conf
+        ? await datasources.health(conf).catch(() => ({
+            ok: false,
+            latencyMs: 0,
+            error: "probe crashed",
+          }))
+        : { ok: false, latencyMs: 0, error: "unknown datasource" };
       return [s.id, health] as const;
     })
   );
@@ -34,17 +31,17 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const body = await request.json().catch(() => null);
-    const verdict = validateDynamicSourceConfig(body);
+    const verdict = datasources.validate(body);
     if (!verdict.ok) {
       return Response.json({ errors: verdict.errors }, { status: 400 });
     }
-    if (getDynamicSourceConfig(verdict.config.id)) {
+    if (datasources.get(verdict.config.id)) {
       return Response.json(
         { error: `id 已存在: ${verdict.config.id}` },
         { status: 409 }
       );
     }
-    upsertDynamicSource(verdict.config);
+    datasources.upsert(verdict.config);
     return Response.json(
       { source: describeDynamicSource(verdict.config) },
       { status: 201 }

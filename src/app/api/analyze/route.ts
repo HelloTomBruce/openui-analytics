@@ -2,13 +2,9 @@ import { streamText, tool, jsonSchema, type CoreTool } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
 import { getOpenUISystemPrompt } from "@/lib/prompt";
 import { getCrossSourceLinks } from "@/lib/crossSourceMap";
-import {
-  readDatasourcesConfig,
-  resolveActiveSources,
-  getDynamicSourceConfig,
-  type ActiveSourceSummary,
-} from "@/mcp/registry";
-import { getDynamicSourceTools, mergeToolSets } from "@/mcp/dynamicSources";
+import { mergeToolSets, type ActiveSourceSummary } from "@openui-analytics/datasources";
+import { toAiTools } from "@openui-analytics/datasources/adapters/ai";
+import { datasources } from "@/lib/datasources";
 
 export async function POST(req: Request) {
   try {
@@ -62,20 +58,18 @@ export async function POST(req: Request) {
     });
 
     // 会话级数据源：请求 id ∩ 全局启用 ∩ 实际存在；未知 id 忽略并告警
-    const cfg = readDatasourcesConfig();
-    const activeSources = resolveActiveSources(
-      Array.isArray(clientSources) ? (clientSources as string[]) : undefined,
-      cfg
+    const activeSources = datasources.resolveActive(
+      Array.isArray(clientSources) ? (clientSources as string[]) : undefined
     );
 
-    // 按激活源装配工具：内置三源 + 动态源（http-mcp / db）；
+    // 按激活源装配工具（http-mcp / db / stdio-cli）；
     // 单一数据源失败时降级为空工具集而非拖垮整个请求
     const toolEntries: { id: string; tools: Promise<Record<string, CoreTool>> }[] =
       [];
     for (const s of activeSources) {
-      const conf = getDynamicSourceConfig(s.id);
+      const conf = datasources.get(s.id);
       if (!conf) continue;
-      toolEntries.push({ id: s.id, tools: getDynamicSourceTools(conf) });
+      toolEntries.push({ id: s.id, tools: datasources.tools(conf).then(toAiTools) });
     }
 
     const settledResults = await Promise.allSettled(

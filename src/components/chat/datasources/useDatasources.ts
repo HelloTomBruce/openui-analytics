@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import type { DataSourceDescriptor, HealthResult } from "@/mcp/registry";
+import type { DataSourceDescriptor, HealthResult } from "@openui-analytics/datasources";
 import { authHeaders } from "@/lib/auth";
 
 /**

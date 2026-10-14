@@ -1,12 +1,8 @@
 import {
-  type DynamicSourceConfig,
-  validateDynamicSourceConfig,
-  upsertDynamicSource,
-  deleteDynamicSource,
-  getDynamicSourceConfig,
   describeDynamicSource,
-} from "@/mcp/registry";
-import { closeDynamicSource } from "@/mcp/dynamicSources";
+  type DynamicSourceConfig,
+} from "@openui-analytics/datasources";
+import { datasources } from "@/lib/datasources";
 
 /**
  * PATCH /api/datasources/:id — 部分更新（所有源同构）。
@@ -25,7 +21,7 @@ export async function PATCH(
       unknown
     >;
 
-    const existing = getDynamicSourceConfig(id);
+    const existing = datasources.get(id);
     if (!existing) {
       return Response.json({ error: `数据源不存在: ${id}` }, { status: 404 });
     }
@@ -52,12 +48,12 @@ export async function PATCH(
         : {}),
     };
 
-    const verdict = validateDynamicSourceConfig(merged);
+    const verdict = datasources.validate(merged);
     if (!verdict.ok) {
       return Response.json({ errors: verdict.errors }, { status: 400 });
     }
-    upsertDynamicSource(verdict.config);
-    await closeDynamicSource(id).catch(() => {});
+    datasources.upsert(verdict.config);
+    await datasources.close(id).catch(() => {});
     return Response.json({ source: describeDynamicSource(verdict.config) });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
@@ -74,11 +70,11 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
-    const deleted = deleteDynamicSource(id);
-    if (!deleted) {
+    if (!datasources.get(id)) {
       return Response.json({ error: `数据源不存在: ${id}` }, { status: 404 });
     }
-    await closeDynamicSource(id).catch(() => {});
+    datasources.delete(id);
+    await datasources.close(id).catch(() => {});
     return new Response(null, { status: 204 });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);

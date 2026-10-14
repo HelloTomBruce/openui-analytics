@@ -191,7 +191,7 @@ async function connectDbSource(
 }
 
 /** 配置 → 脱敏描述符（API 响应与列表共用） */
-function describeDynamicSource(
+export function describeDynamicSource(
   config: DynamicSourceConfig
 ): DataSourceDescriptor {
   if (config.kind === "http-mcp") {

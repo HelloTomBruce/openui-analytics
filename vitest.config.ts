@@ -8,6 +8,8 @@ export default defineConfig({
     },
   },
   test: {
+    // 根自身作为 project（应用测试，jsdom）+ packages/* 子包（各自配置，node 环境）
+    projects: [".", "packages/*"],
     environment: "jsdom",
     setupFiles: ["src/test/setup.ts"],
     include: ["src/**/*.test.{ts,tsx}"],

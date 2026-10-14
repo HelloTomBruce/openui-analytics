@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, it, expect } from "vitest";
 import { getOpenUISystemPrompt } from "./prompt";
-import type { ActiveSourceSummary } from "@/mcp/registry";
+import type { ActiveSourceSummary } from "@openui-analytics/datasources";
 
 describe("getOpenUISystemPrompt 全动态数据源段", () => {
   it("Data Access 段完全由激活源生成：源名/kind/工具 + 跨源映射保留", () => {

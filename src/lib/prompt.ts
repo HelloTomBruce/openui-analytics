@@ -1,5 +1,5 @@
 import { serverLibrary } from "./serverLibrary";
-import type { ActiveSourceSummary } from "@/mcp/registry";
+import type { ActiveSourceSummary } from "@openui-analytics/datasources";
 
 /**
  * Prompt 中的 few-shot 示例。导出以便测试校验其与 serverLibrary schema 的一致性

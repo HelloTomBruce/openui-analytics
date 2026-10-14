@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import { Database, Loader2, Pencil, Plus, Power, Trash2 } from "lucide-react";
-import type { DataSourceDescriptor } from "@/mcp/registry";
+import type { DataSourceDescriptor } from "@openui-analytics/datasources";
 import { useDatasources } from "./useDatasources";
 
 type SourceKind = "http-mcp" | "db" | "stdio-cli";
