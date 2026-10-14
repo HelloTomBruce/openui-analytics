@@ -166,9 +166,6 @@ importers:
 
   .:
     dependencies:
-      '@ai-sdk/openai':
-        specifier: 1.1.15
-        version: 1.1.15(zod@4.6.5)
       '@ai-sdk/react':
         specifier: 1.1.20
         version: 1.1.20(react@19.3.0)(zod@4.6.5)
@@ -181,15 +178,9 @@ importers:
       '@openuidev/devtools':
         specifier: ^0.2.2
         version: 0.2.2(@openuidev/observability@0.0.4)(@openuidev/react-lang@0.3.1(@modelcontextprotocol/sdk@1.32.1(supports-color@7.2.0)(zod@4.6.5))(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(zod@4.6.5))(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
-      '@openuidev/lang-core':
-        specifier: ^0.3.1
-        version: 0.3.1(@modelcontextprotocol/sdk@1.32.1(supports-color@7.2.0)(zod@4.6.5))(zod@4.6.5)
       '@openuidev/react-lang':
         specifier: ^0.3.1
         version: 0.3.1(@modelcontextprotocol/sdk@1.32.1(supports-color@7.2.0)(zod@4.6.5))(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(zod@4.6.5)
-      ai:
-        specifier: 4.1.54
-        version: 4.1.54(react@19.3.0)(zod@4.6.5)
       clsx:
         specifier: ^2.1.1
         version: 2.1.1
