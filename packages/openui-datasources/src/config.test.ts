@@ -150,3 +150,43 @@ describe("配置模型 v3（无 builtin）", () => {
     expect(maskUrl("http://u:p@h:7002/mcp?x=1")).toBe("http://h:7002/mcp");
   });
 });
+
+describe("文件数据源 kind=file", () => {
+  it("validate 通过：仅需 id/name", () => {
+    const verdict = validateSourceConfig({
+      id: "sales",
+      name: "销售表",
+      kind: "file",
+    });
+    expect(verdict).toEqual({
+      ok: true,
+      config: { id: "sales", name: "销售表", kind: "file", enabled: true },
+    });
+  });
+
+  it("validate 拒绝非法 id 与空 name", () => {
+    const badId = validateSourceConfig({
+      id: "Sales_1",
+      name: "x",
+      kind: "file",
+    });
+    expect(badId.ok).toBe(false);
+    const noName = validateSourceConfig({ id: "sales", name: " ", kind: "file" });
+    expect(noName.ok).toBe(false);
+  });
+
+  it("normalize 往返：file 源落盘读回保留", () => {
+    const file = writeTempConfig(
+      JSON.stringify({
+        sources: [
+          { id: "sales", name: "销售表", kind: "file", enabled: false },
+          { id: "bad", name: "缺kind" },
+        ],
+      })
+    );
+    const cfg = loadConfigFile(file);
+    expect(cfg.sources).toEqual([
+      { id: "sales", name: "销售表", kind: "file", enabled: false },
+    ]);
+  });
+});

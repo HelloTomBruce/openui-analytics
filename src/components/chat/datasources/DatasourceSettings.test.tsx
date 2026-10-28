@@ -403,4 +403,63 @@ describe("DatasourceSettings", () => {
 
     expect(await screen.findByText(/id 非法/)).toBeInTheDocument();
   });
+
+  it("文件源行：类型徽章与上传面板（manifest 表清单）", async () => {
+    const FILE_SOURCE = {
+      id: "csv1",
+      name: "销售表",
+      kind: "file",
+      tools: ["execute_sql", "list_tables", "describe_table"],
+      enabled: true,
+    };
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/datasources/csv1/file") {
+        return jsonResponse({
+          manifest: {
+            files: [{ name: "sales.csv", size: 10, uploadedAt: "t" }],
+            tables: [
+              { table: "sales", fromFile: "sales.csv", rowCount: 3, columns: [] },
+            ],
+            ingestedAt: "t",
+          },
+        });
+      }
+      if (url.includes("/api/datasources") && url.indexOf("/api/datasources/") === -1) {
+        return jsonResponse({ sources: [...SOURCES, FILE_SOURCE], health: HEALTH });
+      }
+      return jsonResponse({ error: "unexpected" }, 500);
+    });
+    renderSettings();
+
+    expect(await screen.findByText("销售表")).toBeInTheDocument();
+    expect(screen.getByText("文件")).toBeInTheDocument();
+    // 上传面板加载 manifest 后显示表清单
+    expect(await screen.findByText("sales")).toBeInTheDocument();
+    expect(screen.getByText(/3 行/)).toBeInTheDocument();
+  });
+
+  it("添加文件源：仅需 id/name，提交 kind=file 无额外字段", async () => {
+    renderSettings();
+    await openCreateForm();
+
+    fireEvent.change(screen.getByLabelText(/ID/), { target: { value: "csv1" } });
+    fireEvent.change(screen.getByLabelText(/名称/), { target: { value: "销售表" } });
+    fireEvent.click(screen.getByLabelText(/文件（CSV\/Excel）/));
+    // 文件类型不渲染连接字段
+    expect(screen.queryByLabelText(/URL/)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/连接串/)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/命令/)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /保存/ }));
+
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find(
+        (c) => String(c[0]) === "/api/datasources" && c[1]?.method === "POST"
+      );
+      expect(call).toBeTruthy();
+      const body = JSON.parse(call![1].body as string);
+      expect(body).toEqual({ id: "csv1", name: "销售表", kind: "file" });
+    });
+  });
 });

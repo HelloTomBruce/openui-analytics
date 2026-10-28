@@ -33,10 +33,22 @@ export interface StdioCliSourceConfig {
   enabled: boolean;
 }
 
+/**
+ * 文件数据源（CSV/Excel）：无连接串等额外字段；
+ * 文件内容与 DuckDB 库落盘在应用注入的 filesDir 下，配置层只持有元信息。
+ */
+export interface FileSourceConfig {
+  id: string;
+  name: string;
+  kind: "file";
+  enabled: boolean;
+}
+
 export type DynamicSourceConfig =
   | HttpMcpSourceConfig
   | DbSourceConfig
-  | StdioCliSourceConfig;
+  | StdioCliSourceConfig
+  | FileSourceConfig;
 
 export interface DatasourcesConfig {
   sources: DynamicSourceConfig[];
@@ -112,6 +124,9 @@ function normalizeSourceEntry(entry: unknown): DynamicSourceConfig | null {
       ? o.args.filter((a): a is string => typeof a === "string")
       : undefined;
     return { id, name, kind: "stdio-cli", command: o.command, args, enabled };
+  }
+  if (o.kind === "file") {
+    return { id, name, kind: "file", enabled };
   }
   return null;
 }
@@ -196,8 +211,12 @@ export function validateSourceConfig(input: unknown): ValidateResult {
         config: { id, name, kind: "stdio-cli", command, args, enabled },
       };
     }
+  } else if (o.kind === "file") {
+    if (errors.length === 0) {
+      return { ok: true, config: { id, name, kind: "file", enabled } };
+    }
   } else {
-    errors.push("kind 仅支持 http-mcp | db | stdio-cli");
+    errors.push("kind 仅支持 http-mcp | db | stdio-cli | file");
   }
 
   return { ok: false, errors };

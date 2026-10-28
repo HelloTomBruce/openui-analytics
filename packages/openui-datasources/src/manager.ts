@@ -1,9 +1,19 @@
+import path from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { connectHttpMcp } from "./connectors/http";
 import { connectStdioMcp, probeStdioCli } from "./connectors/stdio";
-import { DIALECTS } from "./connectors/db/dialect";
+import { DIALECTS, type DbDialect, type DbDialectClient } from "./connectors/db/dialect";
+import { duckdbDialect } from "./connectors/db/duckdbDialect";
 import { createDbMcpServer } from "./connectors/db/dbMcpServer";
+import {
+  readManifest,
+  duckDbPath,
+  ingestSourceFiles,
+  removeSourceFiles,
+  type FileSourceManifest,
+  type FileSourceUpload,
+} from "./connectors/file/fileStore";
 import { parseMcpToolResult } from "./parseToolResult";
 import {
   loadConfigFile,
@@ -26,7 +36,7 @@ import {
 export interface DataSourceDescriptor {
   id: string;
   name: string;
-  kind: "http-mcp" | "db" | "stdio-cli";
+  kind: "http-mcp" | "db" | "stdio-cli" | "file";
   tools: string[];
   enabled: boolean;
   dbType?: "postgres" | "mysql";
@@ -83,6 +93,18 @@ export interface DatasourceManager {
   close(id: string): Promise<void>;
   health(s: DynamicSourceConfig): Promise<HealthResult>;
   resolveActive(ids: string[] | undefined): ActiveSourceSummary[];
+  /**
+   * 文件源灌库：完全覆盖语义。先关闭并失效缓存连接（旧库文件句柄），
+   * staging 构建成功后整体替换；失败时旧数据保留、连接缓存已失效。
+   */
+  ingestFiles(
+    id: string,
+    uploads: FileSourceUpload[]
+  ): Promise<FileSourceManifest>;
+  /** 文件源 manifest（未上传返回 null） */
+  filesManifest(id: string): Promise<FileSourceManifest | null>;
+  /** 删除文件源全部落盘内容（调用方负责先 close） */
+  removeFiles(id: string): Promise<void>;
 }
 
 const DB_SOURCE_TOOLS = ["execute_sql", "list_tables", "describe_table"];
@@ -101,6 +123,7 @@ function configKey(source: DynamicSourceConfig): string {
     return JSON.stringify(["http-mcp", source.url, source.token ?? ""]);
   if (source.kind === "db")
     return JSON.stringify(["db", source.dbType, source.connectionString]);
+  if (source.kind === "file") return JSON.stringify(["file", source.id]);
   return JSON.stringify(["stdio-cli", source.command, source.args ?? []]);
 }
 
@@ -150,14 +173,16 @@ async function connectStdioSource(
   return wrapClient(client);
 }
 
-async function connectDbSource(
-  source: Extract<DynamicSourceConfig, { kind: "db" }>
+/** 方言 → 进程内 MCP 连接装配（db 与 file 源共用） */
+async function connectDialectMcp(
+  dialect: DbDialect,
+  dbClient: DbDialectClient,
+  clientName: string,
+  sourceName: string
 ): Promise<McpConnection> {
-  const dialect = DIALECTS[source.dbType];
-  const dbClient = await dialect.connect(source.connectionString);
-  const server = createDbMcpServer(dialect, dbClient, source.name);
+  const server = createDbMcpServer(dialect, dbClient, sourceName);
   const mcpClient = new Client(
-    { name: `openui-dynamic-${source.id}`, version: "1.0.0" },
+    { name: clientName, version: "1.0.0" },
     { capabilities: {} }
   );
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
@@ -192,6 +217,36 @@ async function connectDbSource(
   };
 }
 
+async function connectDbSource(
+  source: Extract<DynamicSourceConfig, { kind: "db" }>
+): Promise<McpConnection> {
+  const dialect = DIALECTS[source.dbType];
+  const dbClient = await dialect.connect(source.connectionString);
+  return connectDialectMcp(
+    dialect,
+    dbClient,
+    `openui-dynamic-${source.id}`,
+    source.name
+  );
+}
+
+async function connectFileSource(
+  source: Extract<DynamicSourceConfig, { kind: "file" }>,
+  filesDir: string
+): Promise<McpConnection> {
+  const manifest = await readManifest(filesDir, source.id);
+  if (!manifest) {
+    throw new Error(`文件数据源尚未上传文件: ${source.id}`);
+  }
+  const dbClient = await duckdbDialect.connect(duckDbPath(filesDir, source.id));
+  return connectDialectMcp(
+    duckdbDialect,
+    dbClient,
+    `openui-dynamic-${source.id}`,
+    source.name
+  );
+}
+
 /** 配置 → 脱敏描述符（API 响应与列表共用） */
 export function describeDynamicSource(
   config: DynamicSourceConfig
@@ -216,6 +271,15 @@ export function describeDynamicSource(
       enabled: config.enabled,
       dbType: config.dbType,
       maskedConnectionString: maskConnectionString(config.connectionString),
+    };
+  }
+  if (config.kind === "file") {
+    return {
+      id: config.id,
+      name: config.name,
+      kind: "file",
+      tools: [...DB_SOURCE_TOOLS],
+      enabled: config.enabled,
     };
   }
   return {
@@ -256,10 +320,19 @@ async function probeHttpMcp(url: string): Promise<void> {
 
 export function createDatasourceManager(opts: {
   configPath: string;
+  /** 文件数据源落盘根目录；默认 <configPath 同级>/../data/files */
+  filesDir?: string;
 }): DatasourceManager {
   const { configPath } = opts;
+  const filesDir =
+    opts.filesDir ?? path.join(path.dirname(configPath), "..", "data", "files");
   let configCache: DatasourcesConfig | null = null;
   const connCache = new Map<string, ConnCacheEntry>();
+  /**
+   * 按源 id 的灌库串行链：staging 目录名同源同进程相同，
+   * 并发上传会互相抹除进行中构建并竞态交换，必须排队。
+   */
+  const ingestChains = new Map<string, Promise<unknown>>();
 
   const readConfig = (): DatasourcesConfig => {
     if (configCache === null) configCache = loadConfigFile(configPath);
@@ -291,7 +364,9 @@ export function createDatasourceManager(opts: {
         ? await connectHttpSource(source)
         : source.kind === "db"
           ? await connectDbSource(source)
-          : await connectStdioSource(source);
+          : source.kind === "file"
+            ? await connectFileSource(source, filesDir)
+            : await connectStdioSource(source);
     const entry: ConnCacheEntry = { key, connection };
     connCache.set(source.id, entry);
     return entry;
@@ -369,6 +444,18 @@ export function createDatasourceManager(opts: {
           } finally {
             await client.close().catch(() => {});
           }
+        } else if (s.kind === "file") {
+          const manifest = await readManifest(filesDir, s.id);
+          if (!manifest) throw new Error("尚未上传文件");
+          const client = await withTimeout(
+            duckdbDialect.connect(duckDbPath(filesDir, s.id)),
+            HEALTH_TIMEOUT_MS
+          );
+          try {
+            await withTimeout(duckdbDialect.ping(client), HEALTH_TIMEOUT_MS);
+          } finally {
+            await client.close().catch(() => {});
+          }
         } else {
           await withTimeout(
             probeStdioCli(s.command, s.args ?? []),
@@ -393,7 +480,8 @@ export function createDatasourceManager(opts: {
           id: s.id,
           name: s.name,
           kind: s.kind,
-          tools: s.kind === "db" ? [...DB_SOURCE_TOOLS] : [],
+          tools:
+            s.kind === "db" || s.kind === "file" ? [...DB_SOURCE_TOOLS] : [],
           ...(s.kind === "db" ? { dbType: s.dbType } : {}),
         };
         enabled.set(s.id, summary);
@@ -405,6 +493,40 @@ export function createDatasourceManager(opts: {
         console.warn(`[datasources] 忽略未知或未启用的数据源 id: ${id}`);
         return [];
       });
+    },
+    async ingestFiles(id, uploads) {
+      // 校验在链外快速失败（只读配置，无共享状态）
+      const source = readConfig().sources.find((s) => s.id === id);
+      if (!source) throw new Error(`数据源不存在: ${id}`);
+      if (source.kind !== "file") {
+        throw new Error(`数据源 ${id} 不是文件类型（kind=${source.kind}）`);
+      }
+      const prev = ingestChains.get(id) ?? Promise.resolve();
+      const task = prev.catch(() => {}).then(async () => {
+        // 先失效缓存连接（持有旧库文件句柄），再 staging 灌库整体替换
+        const entry = connCache.get(id);
+        if (entry) {
+          connCache.delete(id);
+          try {
+            await entry.connection.close();
+          } catch {
+            // 关闭失败不阻断灌库
+          }
+        }
+        return ingestSourceFiles(filesDir, id, uploads);
+      });
+      ingestChains.set(id, task);
+      try {
+        return await task;
+      } finally {
+        if (ingestChains.get(id) === task) ingestChains.delete(id);
+      }
+    },
+    filesManifest(id) {
+      return readManifest(filesDir, id);
+    },
+    removeFiles(id) {
+      return removeSourceFiles(filesDir, id);
     },
   };
 }

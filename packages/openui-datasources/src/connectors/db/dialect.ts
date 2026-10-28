@@ -19,7 +19,8 @@ export interface DbDialectClient {
 }
 
 export interface DbDialect {
-  readonly dbType: "postgres" | "mysql";
+  /** duckdb 仅供 file 连接器内部使用，不进入 DIALECTS 用户配置注册表 */
+  readonly dbType: "postgres" | "mysql" | "duckdb";
   connect(connectionString: string): Promise<DbDialectClient>;
   listTables(client: DbDialectClient): Promise<{ table: string }[]>;
   describeTable(

@@ -4,8 +4,9 @@ import React, { useState } from "react";
 import { Database, Loader2, Pencil, Plus, Power, Trash2 } from "lucide-react";
 import type { DataSourceDescriptor } from "@openui-analytics/datasources";
 import { useDatasources } from "./useDatasources";
+import { FileSourcePanel } from "./FileSourcePanel";
 
-type SourceKind = "http-mcp" | "db" | "stdio-cli";
+type SourceKind = "http-mcp" | "db" | "stdio-cli" | "file";
 
 interface FormState {
   mode: "create" | "edit";
@@ -29,6 +30,7 @@ const CLOSED_FORM: null = null;
 
 function kindBadge(source: DataSourceDescriptor): string {
   if (source.kind === "stdio-cli") return "本地 CLI";
+  if (source.kind === "file") return "文件";
   if (source.kind === "db") {
     return source.dbType === "mysql" ? "MySQL" : "PostgreSQL";
   }
@@ -38,6 +40,9 @@ function kindBadge(source: DataSourceDescriptor): string {
 function badgeClass(source: DataSourceDescriptor): string {
   if (source.kind === "db") {
     return "bg-sky-100 dark:bg-sky-950 text-sky-700 dark:text-sky-300";
+  }
+  if (source.kind === "file") {
+    return "bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300";
   }
   return "bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300";
 }
@@ -78,7 +83,7 @@ export function DatasourceSettings() {
       mode: "edit",
       id: s.id,
       name: s.name,
-      kind: s.kind === "db" ? "db" : "http-mcp",
+      kind: s.kind,
       url: "",
       token: "",
       dbType: s.dbType ?? "postgres",
@@ -111,10 +116,11 @@ export function DatasourceSettings() {
       } else if (form.kind === "db") {
         body.dbType = form.dbType;
         body.connectionString = form.connectionString.trim();
-      } else {
+      } else if (form.kind === "stdio-cli") {
         body.command = form.command.trim();
         body.args = form.argsRaw.split(/\s+/).filter(Boolean);
       }
+      // file：仅 id/name/kind，文件创建后在列表中上传
       const result = await createSource(body);
       if (result.ok) closeForm();
       else setErrors(result.errors ?? ["创建失败"]);
@@ -128,11 +134,12 @@ export function DatasourceSettings() {
     } else if (form.kind === "db") {
       if (form.connectionString.trim())
         patch.connectionString = form.connectionString.trim();
-    } else {
+    } else if (form.kind === "stdio-cli") {
       // stdio：命令非机密总是提交；参数留空 = 不更新
       patch.command = form.command.trim();
       if (form.argsRaw.trim()) patch.args = form.argsRaw.split(/\s+/).filter(Boolean);
     }
+    // file：仅名称可编辑，文件在列表上传区管理
     const result = await updateSource(form.id, patch);
     if (result.ok) closeForm();
     else setErrors(result.errors ?? ["更新失败"]);
@@ -198,13 +205,11 @@ export function DatasourceSettings() {
                 <span className="flex-1 truncate text-slate-600 dark:text-slate-300">
                   {s.name}
                 </span>
-                {(
-                  <span
-                    className={`text-[10px] px-2 py-0.5 rounded font-medium shrink-0 ${badgeClass(s)}`}
-                  >
-                    {kindBadge(s)}
-                  </span>
-                )}
+                <span
+                  className={`text-[10px] px-2 py-0.5 rounded font-medium shrink-0 ${badgeClass(s)}`}
+                >
+                  {kindBadge(s)}
+                </span>
                 <span className="text-slate-400 font-mono text-[10px] shrink-0">
                   {h === undefined ? "..." : h.ok ? `${h.latencyMs}ms` : "异常"}
                 </span>
@@ -255,6 +260,7 @@ export function DatasourceSettings() {
                 )}
               </div>
 
+              {s.kind === "file" && <FileSourcePanel sourceId={s.id} />}
             </div>
           );
         })}
@@ -315,6 +321,18 @@ export function DatasourceSettings() {
                   <span>本地 CLI</span>
                 </label>
               </div>
+              <div>
+                <label htmlFor="ds-kind-file" className="flex items-center gap-1.5 cursor-pointer">
+                  <input
+                    id="ds-kind-file"
+                    type="radio"
+                    name="ds-kind"
+                    checked={form.kind === "file"}
+                    onChange={() => setForm({ ...form, kind: "file" })}
+                  />
+                  <span>文件（CSV/Excel）</span>
+                </label>
+              </div>
             </div>
           )}
 
@@ -348,7 +366,7 @@ export function DatasourceSettings() {
             />
           </div>
 
-          {form.kind === "http-mcp" ? (
+          {form.kind === "http-mcp" && (
             <>
               <div>
                 <label htmlFor="ds-url" className={labelClass}>
@@ -385,7 +403,9 @@ export function DatasourceSettings() {
                 />
               </div>
             </>
-          ) : (
+          )}
+
+          {form.kind === "db" && (
             <>
               <div>
                 <label htmlFor="ds-dbtype" className={labelClass}>
@@ -430,6 +450,17 @@ export function DatasourceSettings() {
                 <span>数据库源仅允许只读 SELECT，自动行数封顶与超时保护</span>
               </div>
             </>
+          )}
+
+          {form.kind === "file" && (
+            <div className="text-[10px] text-slate-400 flex items-center gap-1">
+              <Database className="w-3 h-3" />
+              <span>
+                {form.mode === "create"
+                  ? "创建后在数据源列表中上传 CSV/Excel 文件（≤50MB），即可用自然语言查询"
+                  : "文件在数据源列表的上传区管理；重新上传将完全覆盖现有表"}
+              </span>
+            </div>
           )}
 
           {form.kind === "stdio-cli" && (

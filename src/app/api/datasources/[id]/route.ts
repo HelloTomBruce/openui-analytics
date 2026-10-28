@@ -70,11 +70,16 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
-    if (!datasources.get(id)) {
+    const existing = datasources.get(id);
+    if (!existing) {
       return Response.json({ error: `数据源不存在: ${id}` }, { status: 404 });
     }
     datasources.delete(id);
     await datasources.close(id).catch(() => {});
+    // 文件源联动清理落盘内容（原始文件 + DuckDB 库 + manifest）
+    if (existing.kind === "file") {
+      await datasources.removeFiles(id).catch(() => {});
+    }
     return new Response(null, { status: 204 });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
