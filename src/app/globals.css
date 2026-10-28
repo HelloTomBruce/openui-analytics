@@ -29,3 +29,78 @@ body {
   color: var(--foreground);
   font-family: var(--font-sans);
 }
+
+/* ===== 看板打印导出（@media print） =====
+ * 触发：MessageList 打印状态机给 body 加 .print-mode、目标消息加 .print-target。
+ * 只保留目标看板：侧栏/顶栏/输入区/源选择器/其它消息/no-print 元素全部隐藏；
+ * 纸张化：白底深字、全宽、卡片防跨页断裂；打印结束由 afterprint 还原。
+ */
+@media print {
+  /* 布局约束解除：屏幕态 h-screen/overflow 会在打印时截断多页内容 */
+  body.print-mode .h-screen,
+  body.print-mode .overflow-hidden,
+  body.print-mode .overflow-y-auto {
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  body.print-mode aside,
+  body.print-mode header,
+  body.print-mode .no-print {
+    display: none !important;
+  }
+
+  /* 滚动容器内只保留目标消息（覆盖其它消息/Thinking 卡/错误块）；
+     目标消息内部的执行步骤/分析文字等由 no-print 类排除，仅看板本体导出 */
+  body.print-mode [data-scroll-container] > * {
+    display: none !important;
+  }
+  body.print-mode [data-scroll-container] > .print-message.print-target {
+    display: block !important;
+  }
+
+  /* 纸张化：白底深字 */
+  body.print-mode {
+    background: #ffffff !important;
+    color: #0f172a !important;
+  }
+  body.print-mode .print-target,
+  body.print-mode .print-target > div {
+    background: #ffffff !important;
+    color: #0f172a !important;
+    border-color: #e2e8f0 !important;
+    box-shadow: none !important;
+    max-width: none !important;
+    width: 100% !important;
+  }
+
+  /* Tailwind dark: 由 prefers-color-scheme 触发，打印时仍命中——常见表面类强制转浅 */
+  body.print-mode .print-target .dark\:bg-slate-900,
+  body.print-mode .print-target .dark\:bg-slate-950,
+  body.print-mode .print-target .dark\:bg-slate-800,
+  body.print-mode .print-target .dark\:bg-slate-950\/40,
+  body.print-mode .print-target .dark\:bg-blue-950\/50 {
+    background-color: #ffffff !important;
+  }
+  body.print-mode .print-target .dark\:text-slate-100,
+  body.print-mode .print-target .dark\:text-slate-200,
+  body.print-mode .print-target .dark\:text-slate-300,
+  body.print-mode .print-target .dark\:text-slate-400 {
+    color: #0f172a !important;
+  }
+  body.print-mode .print-target .dark\:border-slate-800,
+  body.print-mode .print-target .dark\:border-slate-700 {
+    border-color: #e2e8f0 !important;
+  }
+
+  /* 卡片/图表面板尽量不跨页断裂 */
+  body.print-mode .print-target [class*="rounded-xl"],
+  body.print-mode .print-target [class*="rounded-lg"] {
+    break-inside: avoid;
+  }
+
+  /* 页边距内留呼吸位 */
+  @page {
+    margin: 12mm;
+  }
+}

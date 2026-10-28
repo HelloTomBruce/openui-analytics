@@ -1,5 +1,5 @@
-import { describe, it, expect, afterEach, vi } from "vitest";
-import { render, screen, cleanup, fireEvent } from "@testing-library/react";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/react";
 import type { Message } from "@ai-sdk/react";
 import { extractOpenUI } from "@/lib/extractOpenUI";
 import { MessageList } from "./MessageList";
@@ -196,5 +196,113 @@ describe("MessageList 快捷滚动操作", () => {
 
     fireEvent.click(btn);
     expect(el.scrollTo).toHaveBeenCalledWith({ top: 0, behavior: "smooth" });
+  });
+});
+
+describe("看板打印导出", () => {
+  const dashboardMsg: Message = {
+    id: "d1",
+    role: "assistant",
+    content: '结论如下\n```openui\n{"type":"Stack","children":[]}\n```',
+  };
+
+  const baseProps = {
+    status: "ready" as const,
+    error: undefined,
+    showRawLang: false,
+    activeSources: undefined,
+    onRendererAction: vi.fn(),
+    onReload: vi.fn(),
+  };
+
+  let printSpy: ReturnType<typeof vi.fn<() => void>>;
+
+  beforeEach(() => {
+    printSpy = vi.fn<() => void>();
+    window.print = printSpy;
+  });
+
+  afterEach(() => {
+    cleanup();
+    document.body.classList.remove("print-mode");
+    vi.clearAllMocks();
+  });
+
+  it("就绪看板显示导出按钮；点击后进入打印模式并调用 window.print", async () => {
+    const { container } = render(
+      <MessageList {...baseProps} messages={[userMsg, dashboardMsg]} />
+    );
+
+    const btn = screen.getByRole("button", { name: /导出 PDF/ });
+    expect(btn).not.toBeDisabled();
+    fireEvent.click(btn);
+
+    // 目标消息标记 + body 打印模式
+    expect(document.body.classList.contains("print-mode")).toBe(true);
+    const target = container.querySelector(".print-target");
+    expect(target).not.toBeNull();
+    expect(target?.className).toContain("print-message");
+
+    // rAF 后触发浏览器打印
+    await waitFor(() => expect(printSpy).toHaveBeenCalledTimes(1));
+  });
+
+  it("afterprint 后清理标记还原页面", async () => {
+    const { container } = render(
+      <MessageList {...baseProps} messages={[dashboardMsg]} />
+    );
+    fireEvent.click(screen.getByRole("button", { name: /导出 PDF/ }));
+    expect(document.body.classList.contains("print-mode")).toBe(true);
+
+    fireEvent(window, new Event("afterprint"));
+
+    await waitFor(() => {
+      expect(document.body.classList.contains("print-mode")).toBe(false);
+      expect(container.querySelector(".print-target")).toBeNull();
+    });
+  });
+
+  it("流式中的看板导出按钮禁用", () => {
+    render(
+      <MessageList
+        {...baseProps}
+        status="streaming"
+        messages={[userMsg, dashboardMsg]}
+      />
+    );
+    expect(screen.getByRole("button", { name: /导出 PDF/ })).toBeDisabled();
+  });
+
+  it("无看板的消息不显示导出按钮", () => {
+    render(<MessageList {...baseProps} messages={[userMsg, aiMsg]} />);
+    expect(
+      screen.queryByRole("button", { name: /导出 PDF/ })
+    ).not.toBeInTheDocument();
+  });
+
+  it("执行步骤与分析文字标记 no-print，仅看板本体导出", () => {
+    const msgWithTools = {
+      ...dashboardMsg,
+      toolInvocations: [
+        {
+          toolCallId: "call-1",
+          toolName: "pg_execute_sql",
+          args: { sql: "SELECT 1" },
+          state: "result",
+          result: {},
+        },
+      ],
+    } as unknown as Message;
+    render(<MessageList {...baseProps} messages={[msgWithTools]} />);
+
+    // 执行步骤（工具调用指示器）与分析文字均排除在打印范围外
+    const toolBadge = screen
+      .getByText(/\[MCP Tool\] 调用: pg_execute_sql/)
+      .closest(".no-print");
+    expect(toolBadge).not.toBeNull();
+    const thinking = screen.getByText("结论如下").closest(".no-print");
+    expect(thinking).not.toBeNull();
+    // 看板本体（渲染器）不在 no-print 容器内
+    expect(screen.getByTestId("renderer").closest(".no-print")).toBeNull();
   });
 });

@@ -39,7 +39,7 @@ export function SourcePicker({ sources, selected, onChange, disabled }: SourcePi
   };
 
   return (
-    <div className="px-4 pb-1 max-w-4xl mx-auto relative flex justify-end">
+    <div className="no-print px-4 pb-1 max-w-4xl mx-auto relative flex justify-end">
       <button
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}

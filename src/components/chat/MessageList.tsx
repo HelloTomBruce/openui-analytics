@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Message } from "@ai-sdk/react";
-import { ArrowDown, ArrowUp, Loader2, Sparkles, FileCode } from "lucide-react";
+import { ArrowDown, ArrowUp, Loader2, Sparkles, FileCode, Printer } from "lucide-react";
 import { OpenUIRenderer } from "@/components/OpenUIRenderer";
 import { extractOpenUI } from "@/lib/extractOpenUI";
 
@@ -21,6 +21,9 @@ interface MessageItemProps {
   /** 当前会话启用源（工具调用归因展示）；memo 靠引用稳定，由父层 useMemo 供给 */
   activeSources?: { id: string; name: string }[];
   onRendererAction: (actionPrompt: string) => void;
+  /** 打印导出：目标消息标记与触发回调（见 MessageList 打印状态机） */
+  isPrintTarget?: boolean;
+  onPrintDashboard?: (id: string) => void;
 }
 
 /** 工具调用徽标：按 <id>_ 前缀归因到源名称，未匹配走通用兜底 */
@@ -48,6 +51,8 @@ const MessageItem = React.memo(function MessageItem({
   showRawLang,
   activeSources,
   onRendererAction,
+  isPrintTarget = false,
+  onPrintDashboard,
 }: MessageItemProps) {
   const rawContent = msg.content;
   // 提取 openui 代码块（仅 ```openui 与裸围栏进渲染器，sql/json 等留在正文）
@@ -59,9 +64,9 @@ const MessageItem = React.memo(function MessageItem({
 
   return (
     <div
-      className={`flex flex-col ${
+      className={`print-message flex flex-col ${
         msg.role === "user" ? "items-end" : "items-start"
-      }`}
+      }${isPrintTarget ? " print-target" : ""}`}
     >
       <div
         className={`max-w-4xl rounded-2xl p-4 text-sm ${
@@ -70,9 +75,9 @@ const MessageItem = React.memo(function MessageItem({
             : "bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-200 rounded-bl-xs w-full shadow-xs"
         }`}
       >
-        {/* 工具调用指示器 */}
+        {/* 工具调用指示器（执行步骤不进入打印导出） */}
         {toolInvocations.length > 0 && (
-          <div className="space-y-2 mb-3">
+          <div className="no-print space-y-2 mb-3">
             {toolInvocations.map((tool, idx: number) => {
               const isRunning = tool.state !== "result";
               return (
@@ -112,7 +117,7 @@ const MessageItem = React.memo(function MessageItem({
         )}
 
         {textPart && (
-          <div className="leading-relaxed whitespace-pre-wrap">
+          <div className="no-print leading-relaxed whitespace-pre-wrap">
             {textPart}
             {isStreaming && !openuiPart && (
               <span className="inline-block w-1.5 h-3.5 bg-blue-500 animate-pulse ml-1 align-middle rounded-xs" />
@@ -122,7 +127,7 @@ const MessageItem = React.memo(function MessageItem({
 
         {/* 原始 OpenUI Lang 源代码展示 */}
         {showRawLang && openuiPart && (
-          <div className="mt-3 bg-blue-950/20 text-blue-900 dark:text-blue-200 p-3 rounded-lg text-xs font-mono overflow-x-auto border border-blue-200 dark:border-blue-900">
+          <div className="no-print mt-3 bg-blue-950/20 text-blue-900 dark:text-blue-200 p-3 rounded-lg text-xs font-mono overflow-x-auto border border-blue-200 dark:border-blue-900">
             <div className="flex items-center gap-1.5 text-[11px] font-semibold text-blue-600 dark:text-blue-400 mb-1.5">
               <FileCode className="w-3.5 h-3.5" />
               <span>OpenUI Lang (Model Generated DSL)</span>
@@ -134,7 +139,7 @@ const MessageItem = React.memo(function MessageItem({
         {/* 流式渐进式渲染 OpenUI Lang 界面 */}
         {openuiPart && (
           <div className="mt-5 space-y-4">
-            <div className="flex items-center justify-between text-xs font-semibold text-slate-400 uppercase tracking-wider">
+            <div className="no-print flex items-center justify-between text-xs font-semibold text-slate-400 uppercase tracking-wider">
               <div className="flex items-center gap-2">
                 <Sparkles className="w-3.5 h-3.5 text-blue-500" />
                 <span>OpenUI 动态看板</span>
@@ -149,6 +154,17 @@ const MessageItem = React.memo(function MessageItem({
                   </span>
                 )}
               </div>
+              <button
+                type="button"
+                onClick={() => onPrintDashboard?.(msg.id)}
+                disabled={isStreaming}
+                aria-label={`导出 PDF（消息 ${msg.id}）`}
+                title="打印看板，可在打印对话框中另存为 PDF"
+                className="flex items-center gap-1 text-[10px] normal-case tracking-normal text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 px-1.5 py-0.5 rounded hover:bg-blue-50 dark:hover:bg-blue-950/50 disabled:opacity-40 disabled:pointer-events-none transition-colors"
+              >
+                <Printer className="w-3 h-3" />
+                <span>导出 PDF</span>
+              </button>
             </div>
 
             <OpenUIRenderer
@@ -217,6 +233,32 @@ export function MessageList({
     if (el) scrollToEdge(el.scrollHeight);
   }, [scrollToEdge]);
 
+  /**
+   * 看板打印状态机：标记目标消息 → body 加 print-mode → 下一帧 window.print()
+   * （等 React 渲染出 print-target）→ afterprint（含取消）清理标记还原页面。
+   */
+  const [printTargetId, setPrintTargetId] = useState<string | null>(null);
+
+  const handlePrintDashboard = useCallback((id: string) => {
+    setPrintTargetId(id);
+  }, []);
+
+  useEffect(() => {
+    if (!printTargetId) return;
+    document.body.classList.add("print-mode");
+    const restore = () => {
+      document.body.classList.remove("print-mode");
+      setPrintTargetId(null);
+    };
+    window.addEventListener("afterprint", restore);
+    const raf = requestAnimationFrame(() => window.print());
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("afterprint", restore);
+      document.body.classList.remove("print-mode");
+    };
+  }, [printTargetId]);
+
   return (
     <div className="relative flex-1 min-h-0">
       <div
@@ -233,6 +275,8 @@ export function MessageList({
           showRawLang={showRawLang}
           activeSources={activeSources}
           onRendererAction={onRendererAction}
+          isPrintTarget={printTargetId === msg.id}
+          onPrintDashboard={handlePrintDashboard}
         />
       ))}
 
@@ -272,9 +316,9 @@ export function MessageList({
       )}
       </div>
 
-      {/* 右侧快捷滚动操作：仅离开对应边缘时出现对应按钮 */}
+      {/* 右侧快捷滚动操作：仅离开对应边缘时出现对应按钮（不进入打印导出） */}
       {(!atTop || !atBottom) && (
-        <div className="absolute right-4 top-1/2 -translate-y-1/2 z-10 flex flex-col gap-2">
+        <div className="no-print absolute right-4 top-1/2 -translate-y-1/2 z-10 flex flex-col gap-2">
           {!atTop && (
             <button
               onClick={() => scrollToEdge(0)}

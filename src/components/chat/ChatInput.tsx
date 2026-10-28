@@ -12,7 +12,7 @@ interface ChatInputProps {
 
 export function ChatInput({ input, isLoading, onChange, onSubmit }: ChatInputProps) {
   return (
-    <div className="p-4 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800">
+    <div className="no-print p-4 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800">
       <form onSubmit={onSubmit} className="flex items-center gap-2 max-w-4xl mx-auto">
         <input
           type="text"
