@@ -12,7 +12,7 @@
  *   data/        数据明细      DataTable
  *   insight/     洞察结论      InsightBox、ActionPlanCard
  *   timeline/    时间线        ActivityTimeline
- *   interaction/ 交互控件      AnalyticsFilterBar、ActionButton、ReactiveSimulator
+ *   interaction/ 交互控件      AnalyticsFilterBar、ActionButton、ReactiveSimulator、PlanReviewCard
  *   internal/    内部支撑      ErrorBoundary、ComponentSafeWrapper、parseProp、csv（不对外承诺稳定性）
  *
  * 扩展指南见包内 README.md。
@@ -45,6 +45,7 @@ import { ActivityTimeline, ActivityTimelineDef } from "./timeline/ActivityTimeli
 import { AnalyticsFilterBar, AnalyticsFilterBarDef } from "./interaction/AnalyticsFilterBar";
 import { ActionButton, ActionButtonDef } from "./interaction/ActionButton";
 import { ReactiveSimulator, ReactiveSimulatorDef } from "./interaction/ReactiveSimulator";
+import { PlanReviewCard, PlanReviewCardDef } from "./interaction/PlanReviewCard";
 
 /**
  * OpenUI 组件库：传给 @openuidev/react-lang <Renderer library={...}/> 渲染。
@@ -70,6 +71,7 @@ export const analyticsLibrary = createLibrary({
     AnalyticsFilterBarDef,
     ActionButtonDef,
     ReactiveSimulatorDef,
+    PlanReviewCardDef,
   ],
   root: "Root",
 });
@@ -93,6 +95,7 @@ export {
   AnalyticsFilterBar,
   ActionButton,
   ReactiveSimulator,
+  PlanReviewCard,
 };
 
 // ===== 对外导出：组件定义（组合自定义 library 时复用）=====
