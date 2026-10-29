@@ -276,6 +276,39 @@ export const serverReactiveSimulator = defineComponent({
   component: () => null,
 });
 
+export const serverPlanReviewCard = defineComponent({
+  name: "PlanReviewCard",
+  description:
+    "分析规划确认卡（Plan-first 规划阶段专用）：复述问题 + 数据基础徽标 + 分步思路（含图表选型）+ 澄清问题选项，用户点选后一键确认触发执行；仅用于规划轮次，不要在执行轮次产出",
+  props: z.object({
+    title: z.string().describe("规划标题，如：渠道 CAC 分析思路确认"),
+    question: z.string().optional().describe("对用户原始问题的复述"),
+    sources: z.array(z.string()).optional().describe("数据基础徽标：源/表/字段或已验证的采样结论"),
+    steps: z
+      .array(
+        z.object({
+          title: z.string().describe("步骤标题"),
+          detail: z.string().optional().describe("步骤说明"),
+          chart: z.string().optional().describe("该步骤计划使用的可视化组件，如 FunnelChart / ReportLayout + MetricCard"),
+        })
+      )
+      .min(1)
+      .describe("有序分析步骤"),
+    clarifications: z
+      .array(
+        z.object({
+          question: z.string().describe("澄清问题"),
+          options: z.array(z.string()).optional().describe("可选答案，渲染为可点选 chips"),
+          default: z.string().optional().describe("默认假设：用户未选择时按此执行"),
+        })
+      )
+      .optional()
+      .describe("不明确的点；每题必须带 options 或 default"),
+    confirmLabel: z.string().optional().describe("确认按钮文案，默认「按此思路开始分析」"),
+  }),
+  component: () => null,
+});
+
 export const serverLibrary = createLibrary({
   components: [
     serverRoot,
@@ -296,6 +329,7 @@ export const serverLibrary = createLibrary({
     serverContributionHeatmap,
     serverActionButton,
     serverReactiveSimulator,
+    serverPlanReviewCard,
   ],
   root: "Root",
 });

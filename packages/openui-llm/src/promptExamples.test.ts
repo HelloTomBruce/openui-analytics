@@ -1,7 +1,13 @@
 import { describe, it, expect } from "vitest";
 import { createParser } from "@openuidev/lang-core";
 import { serverLibrary } from "./serverLibrary";
-import { promptExample, reportLayoutExample, focusLayoutExample, comparisonLayoutExample } from "./prompt";
+import {
+  promptExample,
+  reportLayoutExample,
+  focusLayoutExample,
+  comparisonLayoutExample,
+  planExample,
+} from "./prompt";
 
 /**
  * Prompt ↔ Schema 一致性守护：
@@ -15,6 +21,7 @@ describe("prompt 示例与组件库 schema 一致性", () => {
     ["reportLayoutExample", reportLayoutExample],
     ["focusLayoutExample", focusLayoutExample],
     ["comparisonLayoutExample", comparisonLayoutExample],
+    ["planExample", planExample],
   ];
 
   for (const [name, code] of examples) {
@@ -86,6 +93,24 @@ describe("prompt 示例与组件库 schema 一致性", () => {
     expect(zoneProps.rightLabel).toBe("Google Ads");
     for (const zone of ["left", "right", "verdict"]) {
       expect(Array.isArray(zoneProps[zone])).toBe(true);
+    }
+  });
+
+  it("规划示例：Root 直接子组件是单个 PlanReviewCard，步骤/澄清数组齐备", () => {
+    const result = parser.parse(planExample);
+    expect(result.root?.typeName).toBe("Root");
+    const children = result.root?.props?.children;
+    const first = Array.isArray(children) ? children[0] : children;
+    expect((first as { typeName?: string })?.typeName).toBe("PlanReviewCard");
+    const cardProps = (first as { props?: Record<string, unknown> })?.props ?? {};
+    expect(cardProps.title).toBe("渠道 CAC 分析思路确认");
+    expect(Array.isArray(cardProps.steps)).toBe(true);
+    expect(Array.isArray(cardProps.clarifications)).toBe(true);
+    expect(Array.isArray(cardProps.sources)).toBe(true);
+    // 澄清问题必须带 options 或 default（规划契约：允许一键确认不答题）
+    const clarifications = cardProps.clarifications as Array<Record<string, unknown>>;
+    for (const c of clarifications) {
+      expect(Array.isArray(c.options) || typeof c.default === "string").toBe(true);
     }
   });
 });

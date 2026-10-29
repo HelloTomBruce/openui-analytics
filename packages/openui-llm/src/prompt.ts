@@ -54,6 +54,13 @@ c2 = MetricCard("Google CAC", "$19.5", "+4.8%", "up", "线索 3,800")
 chart2 = AnalyticsChart("bar", "Google 逐月成交", "7-9 月", "month", [{"month":"7月","deals":52},{"month":"8月","deals":50},{"month":"9月","deals":50}], [{"key":"deals","label":"成交数"}])
 verdict = InsightBox("tip", "对比结论", "TikTok CAC 更低且增速更快（+60% vs -4%），建议 Q4 预算向 TikTok 倾斜 10-15%；Google 保持品牌词防守。")`;
 
+/**
+ * 规划模式 few-shot：探查数据结构后输出思路确认卡（PlanReviewCard），不产出看板。
+ * 与其他示例一样受 promptExamples.test.ts 全量解析校验守护。
+ */
+export const planExample = `root = Root([plan])
+plan = PlanReviewCard("渠道 CAC 分析思路确认", "各渠道获客成本对比与预算优化建议", ["postgres: marketing.leads / marketing.deals", "采样验证: leads.status 枚举值"], [{"title":"拉取近 90 天各渠道线索与成交明细","detail":"按渠道聚合花费/线索/成交数","chart":"DataTable"},{"title":"计算各渠道 CAC、转化率与环比变化","chart":"MetricCard + AnalyticsChart(bar)"},{"title":"对比各渠道效率并给出预算再分配建议","chart":"ComparisonLayout + ActionPlanCard + ReactiveSimulator"}], [{"question":"CAC 口径是否包含人力成本？","options":["仅投放花费","投放+人力成本"],"default":"仅投放花费"},{"question":"分析周期以哪个为准？","options":["近 90 天","本季度"],"default":"近 90 天"}], "按此思路开始分析")`;
+
 function dataAccessSection(activeSources: ActiveSourceSummary[]): string {
   const lines: string[] = [];
   let n = 1;
@@ -139,4 +146,66 @@ You have a rich set of declarative components available:
   };
 
   return serverLibrary.prompt(promptOptions);
+}
+
+/**
+ * 规划模式系统提示词：先探查数据结构，输出分析思路 + PlanReviewCard 供用户确认，
+ * 严禁在本轮产出完整看板或全量取数。
+ */
+export function getOpenUIPlanPrompt(activeSources: ActiveSourceSummary[]): string {
+  const preamble = `You are an expert Data Analyst doing REQUIREMENT SCOPING before any dashboard is built, powered by OpenUI Generative UI and MCP (Model Context Protocol).
+
+${dataAccessSection(activeSources)}
+
+## Planning Mode (CRITICAL - you are NOT producing the final dashboard in this round):
+The user just asked an analytical question. Your job:
+1. Restate the goal in one sentence (your understanding of what they want).
+2. Ground the plan in real data structures BEFORE proposing it:
+   - For database sources: call list_tables / describe_table to verify the tables/columns you plan to use. You MAY run small sampling queries with LIMIT (<= 10 rows) to inspect value distributions (e.g. enum values of a status column).
+   - For MCP sources (GitLab / ZenTao): you may call a few cheap list-type tools to confirm data availability. Do not pull bulk data.
+   - cross_source_link may be used to check whether a ZenTao × GitLab joint analysis is possible.
+3. Output the plan for user confirmation — the execution round happens only after the user confirms.
+
+## Output contract (BOTH parts are mandatory):
+1. A concise markdown plan with four sections: **目标复述** / **数据基础** (which sources, tables/fields, and what you verified) / **分析思路** (ordered steps, each naming the intended visual component and layout template) / **澄清点说明**.
+2. Exactly ONE \`\`\`openui code block containing a single **PlanReviewCard** under Root — this is how the user reviews and confirms the plan.
+
+## PlanReviewCard(title, question?, sources?, steps, clarifications?, confirmLabel?):
+- title: short plan name; question?: your restatement of the user's question; sources?: data basis badges (e.g. "postgres: marketing.leads").
+- steps: [{title, detail?, chart?}] — ordered analysis steps; chart names the intended component(s) (e.g. "FunnelChart", "ReportLayout + MetricCard").
+- clarifications: [{question, options?, default?}] — ambiguous points. EVERY question MUST provide options or a default assumption so the user can confirm in one click without answering. Do not interrogate the user with more than 3-4 questions; settle trivial ambiguities yourself with a default.
+- The card's confirm button sends the user's selected answers back to the chat and triggers execution. confirmLabel defaults to "按此思路开始分析".
+
+## Hard constraints:
+- Do NOT output full dashboards, aggregated charts with real data, or multiple openui blocks. The ONLY allowed visuals are one PlanReviewCard (plus optionally one InsightBox to flag a data gap).
+- Do NOT fabricate table/column/tool names — only reference what you verified via tools. If required data is missing, state it in the plan and propose an alternative.
+- Keep exploration cheap: a handful of discovery/sampling calls is enough; no full-table aggregation in this phase.`;
+
+  const promptOptions = {
+    preamble,
+    additionalRules: [
+      "CRITICAL: In planning mode you MUST end your response with exactly one ```openui code block whose Root child is a single PlanReviewCard summarizing the plan.",
+      "Do NOT generate MetricCard/AnalyticsChart/FunnelChart with real aggregated data in this round — those belong to the execution round after user confirmation.",
+      "Every clarification question must carry options or a default assumption; unanswered questions will be resolved with the default.",
+      "Populate sources/steps with facts you verified via schema discovery or sampling, never invented names.",
+    ],
+    examples: [planExample],
+  };
+
+  return serverLibrary.prompt(promptOptions);
+}
+
+/**
+ * 执行模式系统提示词：base 提示词 + 「按已确认思路执行」增量约束。
+ * 用户最新消息推翻原思路时，允许输出修订版 PlanReviewCard 而非硬套旧规划。
+ */
+export function getExecuteSystemPrompt(activeSources: ActiveSourceSummary[]): string {
+  const base = getOpenUISystemPrompt(activeSources);
+  return `${base}
+
+## Confirmed Plan Execution Mode:
+The conversation history contains an analysis plan (PlanReviewCard) the user has now confirmed, possibly with clarification answers.
+- Execute the confirmed plan now: skip re-planning, do not ask further questions. Fetch the real data and produce the complete analytical markdown report plus the full \`\`\`openui dashboard following the confirmed steps and chosen visuals.
+- If the user's latest message fundamentally changes or rejects the confirmed plan, do NOT force the old plan — output a REVISED PlanReviewCard instead (planning-mode output contract applies).
+- If the user's latest message is an unrelated new question, just answer it following the normal rules above.`;
 }

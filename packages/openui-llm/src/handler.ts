@@ -7,7 +7,7 @@ import {
   type DatasourceManager,
 } from "@openui-analytics/datasources";
 import { toAiTools } from "@openui-analytics/datasources/adapters/ai";
-import { getOpenUISystemPrompt } from "./prompt";
+import { getOpenUISystemPrompt, getOpenUIPlanPrompt, getExecuteSystemPrompt } from "./prompt";
 import { getCrossSourceLinks } from "./crossSourceMap";
 
 export interface AnalyzeHandlerOptions {
@@ -24,6 +24,13 @@ export interface AnalyzeRequestBody {
   sources?: string[];
   /** 接口协议：anthropic（如 Kimi Coding 的 /v1/messages）或缺省 openai 兼容（/chat/completions） */
   protocol?: "openai" | "anthropic";
+  /**
+   * 分析阶段（Plan-first 两阶段编排）：
+   * - direct（缺省）：直接分析产出看板
+   * - plan：规划确认阶段——仅探查表结构 + LIMIT 小样本，输出 PlanReviewCard 思路确认卡
+   * - execute：执行阶段——按历史中已确认的规划产出完整看板
+   */
+  mode?: "direct" | "plan" | "execute";
   /** 历史透传字段（如 gitlabUrl/gitlabToken）被忽略的现状保持 */
   [key: string]: unknown;
 }
@@ -45,6 +52,7 @@ export function createAnalyzeHandler(opts: AnalyzeHandlerOptions) {
         temperature: clientTemperature,
         sources: clientSources,
         protocol: clientProtocol,
+        mode: clientMode,
       } = (await req.json()) as AnalyzeRequestBody;
 
       const apiKey = clientKey || process.env.OPENAI_API_KEY || process.env.LLM_API_KEY;
@@ -57,7 +65,11 @@ export function createAnalyzeHandler(opts: AnalyzeHandlerOptions) {
           ? Math.min(Math.max(parsedTemp, 0), 2)
           : 0.2;
 
-      console.log("[Analyze API Request]", { model, baseURL, protocol: clientProtocol ?? "openai", hasApiKey: !!apiKey });
+      // 分析阶段归一化：非法值回落 direct，保持向后兼容
+      const mode =
+        clientMode === "plan" || clientMode === "execute" ? clientMode : "direct";
+
+      console.log("[Analyze API Request]", { model, baseURL, protocol: clientProtocol ?? "openai", mode, hasApiKey: !!apiKey });
 
       // 安全约束：客户端自带 baseURL 时必须同时自带 apiKey。
       // 否则服务端会拿着 env 中的真实 Key 去请求客户端指定的任意 URL —— 凭证外泄通道。
@@ -132,9 +144,18 @@ export function createAnalyzeHandler(opts: AnalyzeHandlerOptions) {
           : s;
       });
 
+      // 按阶段分派系统提示词：plan → 规划变体（探查边界 + PlanReviewCard 契约）；
+      // execute → base + 按已确认思路执行的增量约束；direct → base 直出看板
+      const system =
+        mode === "plan"
+          ? getOpenUIPlanPrompt(summaries)
+          : mode === "execute"
+            ? getExecuteSystemPrompt(summaries)
+            : getOpenUISystemPrompt(summaries);
+
       const result = streamText({
         model: languageModel,
-        system: getOpenUISystemPrompt(summaries),
+        system,
         // 客户端消息体原样透传（与原实现一致，不做结构校验）
         messages: messages as CoreMessage[],
         temperature,
@@ -158,7 +179,8 @@ export function createAnalyzeHandler(opts: AnalyzeHandlerOptions) {
             },
           }),
         },
-        maxSteps: 10,
+        // 规划阶段只需 schema 探查 + 小样本，步数预算收紧；执行/直出保持 10
+        maxSteps: mode === "plan" ? 6 : 10,
         onStepFinish({ stepType, toolCalls, text, finishReason }) {
           console.log(`[Vercel AI SDK Step Finish] type=${stepType}, finishReason=${finishReason}, toolCalls=${toolCalls?.length || 0}, textLength=${text?.length || 0}`);
         },

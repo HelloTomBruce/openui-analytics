@@ -251,4 +251,36 @@ describe("createAnalyzeHandler 全动态装配", () => {
     // 无内置静态段
     expect(arg.system).not.toContain("PostgreSQL Analytics Database");
   });
+
+  it("mode 分派：plan → 规划提示词 + maxSteps=6；execute → 执行提示词；非法/缺省 → direct", async () => {
+    const manager = await makeFakeManager();
+    const POST = createAnalyzeHandler({ datasources: manager });
+
+    await POST(makeRequest({ messages: [], apiKey: "k", mode: "plan" }));
+    let arg = vi.mocked(streamText).mock.calls[0][0];
+    expect(arg.system).toContain("Planning Mode");
+    expect(arg.system).toContain("PlanReviewCard");
+    expect(arg.maxSteps).toBe(6);
+    // 规划轮次工具照常装配（探查需要）
+    expect(Object.keys(arg.tools ?? {})).toContain("cross_source_link");
+
+    await POST(makeRequest({ messages: [], apiKey: "k", mode: "execute" }));
+    arg = vi.mocked(streamText).mock.calls[1][0];
+    expect(arg.system).toContain("Confirmed Plan Execution Mode");
+    expect(arg.maxSteps).toBe(10);
+
+    // 非法值回落 direct：不含规划/执行增量段
+    await POST(
+      makeRequest({ messages: [], apiKey: "k", mode: "bogus" as unknown as "plan" })
+    );
+    arg = vi.mocked(streamText).mock.calls[2][0];
+    expect(arg.system).not.toContain("Planning Mode");
+    expect(arg.system).not.toContain("Confirmed Plan Execution Mode");
+
+    // 缺省完全向后兼容
+    await POST(makeRequest({ messages: [], apiKey: "k" }));
+    arg = vi.mocked(streamText).mock.calls[3][0];
+    expect(arg.system).not.toContain("Planning Mode");
+    expect(arg.maxSteps).toBe(10);
+  });
 });
