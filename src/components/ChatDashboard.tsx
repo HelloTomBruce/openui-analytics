@@ -25,6 +25,8 @@ export default function ChatDashboard() {
   const [showRawLang, setShowRawLang] = useState(false);
   const [showDevTools, setShowDevTools] = useState(false);
   const [devToolsCode, setDevToolsCode] = useState(DEFAULT_SANDBOX_CODE);
+  // Plan-first：新问题先出分析思路（默认关）；「先出思路」开关
+  const [planMode, setPlanMode] = useState(false);
 
   const {
     showSettings,
@@ -148,19 +150,47 @@ export default function ChatDashboard() {
   // 会话开始（存在用户消息）即锁定数据源选择：仅初始会话（只有欢迎语）可勾选
   const sourcesLocked = messages.some((m) => m.role === "user");
 
+  // Plan-first 状态机：最近一条 assistant 消息含 PlanReviewCard ⇒ 规划待确认，
+  // 下一条消息（打字答复或确认按钮注入）按 execute 发送；否则开关开启时按 plan；
+  // 都不满足则不带 mode（direct，向后兼容）。会话切换/刷新后由消息历史自然恢复。
+  const awaitingPlanConfirm = useMemo(() => {
+    const lastAssistant = [...messages]
+      .reverse()
+      .find((m) => m.role === "assistant");
+    return Boolean(
+      lastAssistant &&
+        /PlanReviewCard\s*\(/.test(String(lastAssistant.content ?? ""))
+    );
+  }, [messages]);
+
+  const nextModeBody = useCallback((): { mode?: "plan" | "execute" } => {
+    if (awaitingPlanConfirm) return { mode: "execute" };
+    if (planMode) return { mode: "plan" };
+    return {};
+  }, [awaitingPlanConfirm, planMode]);
+
   // 提交/追加消息时记录发起会话，供 onFinish 定向保存
   const handleChatSubmit = useCallback(
     (e?: React.FormEvent<HTMLFormElement>) => {
       streamingSessionIdRef.current = currentSessionId;
-      handleSubmit(e);
+      handleSubmit(e, { body: nextModeBody() });
     },
-    [handleSubmit, currentSessionId]
+    [handleSubmit, currentSessionId, nextModeBody]
   );
 
   const handleRendererAction = useCallback(
     (actionPrompt: string) => {
       streamingSessionIdRef.current = currentSessionId;
-      append({ role: "user", content: actionPrompt });
+      append({ role: "user", content: actionPrompt }, { body: nextModeBody() });
+    },
+    [append, currentSessionId, nextModeBody]
+  );
+
+  // 预设场景方向已明确，始终直出看板：不进规划模式，也不受待确认规划影响
+  const handlePresetSelect = useCallback(
+    (msg: string) => {
+      streamingSessionIdRef.current = currentSessionId;
+      append({ role: "user", content: msg });
     },
     [append, currentSessionId]
   );
@@ -194,7 +224,7 @@ export default function ChatDashboard() {
         onDeleteSession={handleDeleteSession}
         onEditTitleChange={setEditingTitleText}
         onClearAllSessions={handleClearAllSessions}
-        onPresetSelect={handleRendererAction}
+        onPresetSelect={handlePresetSelect}
         onOpenSettings={handleOpenSettings}
         onOpenDevTools={handleOpenDevTools}
         onToggleRawLang={handleToggleRawLang}
@@ -268,8 +298,11 @@ export default function ChatDashboard() {
         <ChatInput
           input={input}
           isLoading={isLoading}
-          onChange={handleInputChange}
+          planMode={planMode}
+          // AI SDK 的 handleInputChange 只读 e.target.value，事件源类型安全收敛到 textarea
+          onChange={(e) => handleInputChange(e as unknown as React.ChangeEvent<HTMLInputElement>)}
           onSubmit={handleChatSubmit}
+          onPlanModeChange={setPlanMode}
         />
       </main>
 

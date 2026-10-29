@@ -144,4 +144,84 @@ describe("ChatDashboard 守护测试（重构行为锁定）", () => {
     );
     expect(reactErrors).toEqual([]);
   });
+
+  it("Plan-first 开关：默认关提交不带 mode；开启后携带 mode=plan", () => {
+    const handleSubmit = vi.fn((e?: { preventDefault?: () => void }) =>
+      e?.preventDefault?.()
+    );
+    vi.mocked(useChat).mockImplementation(
+      () =>
+        ({
+          ...defaultUseChatResult(),
+          handleSubmit,
+        }) as never
+    );
+
+    render(<ChatDashboard />);
+    const form = screen
+      .getByPlaceholderText(/例如：从数据库分析各渠道/)
+      .closest("form") as HTMLFormElement;
+
+    // 默认关：direct（不带 mode）
+    fireEvent.submit(form);
+    expect(handleSubmit).toHaveBeenLastCalledWith(expect.anything(), {
+      body: {},
+    });
+
+    // 开启「先出思路」（输入框内无边框开关按钮，aria-pressed 标识态）
+    const planToggle = screen.getByRole("button", { name: /先出思路/ });
+    expect(planToggle).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(planToggle);
+    fireEvent.submit(form);
+    expect(handleSubmit).toHaveBeenLastCalledWith(expect.anything(), {
+      body: { mode: "plan" },
+    });
+  });
+
+  it("规划待确认（最后 assistant 含 PlanReviewCard）：答复按 execute 发送；预设场景始终直出", async () => {
+    const handleSubmit = vi.fn((e?: { preventDefault?: () => void }) =>
+      e?.preventDefault?.()
+    );
+    const append = vi.fn();
+    const messages = [
+      DEFAULT_WELCOME_MESSAGE,
+      { id: "u1", role: "user" as const, content: "分析各渠道 CAC" },
+      {
+        id: "a1",
+        role: "assistant" as const,
+        content:
+          '思路如下：\n```openui\nroot = Root([plan])\nplan = PlanReviewCard("CAC 分析思路确认", "各渠道对比", [], [{"title":"取数"}], [])\n```',
+      },
+    ];
+    vi.mocked(useChat).mockImplementation(
+      () =>
+        ({
+          ...buildUseChatResult(messages),
+          handleSubmit,
+          append,
+        }) as never
+    );
+
+    render(<ChatDashboard />);
+
+    // 打字答复规划（提交）→ execute
+    const form = screen
+      .getByRole("button", { name: /发送/ })
+      .closest("form") as HTMLFormElement;
+    fireEvent.submit(form);
+    expect(handleSubmit).toHaveBeenLastCalledWith(expect.anything(), {
+      body: { mode: "execute" },
+    });
+
+    // 预设场景：不带 mode（直出），也不受待确认规划影响
+    fireEvent.click(screen.getByText("推荐场景"));
+    fireEvent.click(
+      screen.getByText(/本迭代各项目的 Bug 收敛情况/, { exact: false })
+    );
+    // 预设场景：append 单参调用（无 body/mode，直出），也不受待确认规划影响
+    const lastCall = vi.mocked(append).mock.calls.at(-1);
+    expect(lastCall).toHaveLength(1);
+    expect(lastCall?.[0]).toMatchObject({ role: "user" });
+    expect(String(lastCall?.[0]?.content)).toContain("Bug 收敛");
+  });
 });
