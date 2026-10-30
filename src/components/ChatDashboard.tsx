@@ -7,6 +7,7 @@ import { DEFAULT_SANDBOX_CODE } from "@/lib/presetQueries";
 import { upsertMessage } from "@/lib/messages";
 import { useLlmSettings } from "@/hooks/useLlmSettings";
 import { useSessionManager } from "@/hooks/useSessionManager";
+import { useDashboards, type FavoriteDashboardInput } from "@/hooks/useDashboards";
 import { ChatSidebar } from "@/components/chat/ChatSidebar";
 import { MessageList } from "@/components/chat/MessageList";
 import { ChatInput } from "@/components/chat/ChatInput";
@@ -78,6 +79,27 @@ export default function ChatDashboard() {
   const handleChatError = useCallback((err: Error) => {
     console.error("Chat error:", err);
   }, []);
+
+  // 看板收藏库：列表/收藏/重命名/删除（列表同时驱动侧栏看板库，见 TASK-008）
+  const { summaries: dashboardSummaries, favorite: favoriteDashboard } =
+    useDashboards();
+  // 星标判定集合：收藏记录的 origin.messageId
+  const favoritedMessageIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const s of dashboardSummaries) {
+      if (s.origin?.messageId) ids.add(s.origin.messageId);
+    }
+    return ids;
+  }, [dashboardSummaries]);
+  // MessageList 只组装消息侧字段，sessionId（收藏归档）由本层补齐
+  const handleFavoriteDashboard = useCallback(
+    (input: FavoriteDashboardInput) =>
+      favoriteDashboard({
+        ...input,
+        origin: { ...input.origin, sessionId: currentSessionId },
+      }),
+    [favoriteDashboard, currentSessionId]
+  );
 
   // 会话级数据源：列表来自 /api/datasources，勾选集写入当前会话并随请求体透传
   const { sources: allDatasources } = useDatasourceList();
@@ -286,6 +308,8 @@ export default function ChatDashboard() {
           activeSources={sessionSources}
           onRendererAction={handleRendererAction}
           onReload={reload}
+          favoritedMessageIds={favoritedMessageIds}
+          onFavoriteDashboard={handleFavoriteDashboard}
         />
 
         <SourcePicker

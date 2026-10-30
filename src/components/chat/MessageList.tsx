@@ -2,9 +2,11 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Message } from "@ai-sdk/react";
-import { ArrowDown, ArrowUp, Loader2, Sparkles, FileCode, Printer } from "lucide-react";
+import { ArrowDown, ArrowUp, Loader2, Sparkles, FileCode, Printer, Star } from "lucide-react";
 import { OpenUIRenderer } from "@/components/OpenUIRenderer";
 import { extractOpenUI } from "@/lib/extractOpenUI";
+import { toast } from "@/lib/toast";
+import type { FavoriteDashboardInput, FavoriteResult } from "@/hooks/useDashboards";
 
 export interface ToolInvocationState {
   state: "call" | "result" | "partial-call";
@@ -24,6 +26,10 @@ interface MessageItemProps {
   /** 打印导出：目标消息标记与触发回调（见 MessageList 打印状态机） */
   isPrintTarget?: boolean;
   onPrintDashboard?: (id: string) => void;
+  /** 看板收藏：该消息是否已收藏（按 origin.messageId 判定）与收藏触发 */
+  isFavorited?: boolean;
+  isFavoritePending?: boolean;
+  onFavoriteDashboard?: (messageId: string) => void;
 }
 
 /** 工具调用徽标：按 <id>_ 前缀归因到源名称，未匹配走通用兜底 */
@@ -53,6 +59,9 @@ const MessageItem = React.memo(function MessageItem({
   onRendererAction,
   isPrintTarget = false,
   onPrintDashboard,
+  isFavorited = false,
+  isFavoritePending = false,
+  onFavoriteDashboard,
 }: MessageItemProps) {
   const rawContent = msg.content;
   // 提取 openui 代码块（仅 ```openui 与裸围栏进渲染器，sql/json 等留在正文）
@@ -154,17 +163,50 @@ const MessageItem = React.memo(function MessageItem({
                   </span>
                 )}
               </div>
-              <button
-                type="button"
-                onClick={() => onPrintDashboard?.(msg.id)}
-                disabled={isStreaming}
-                aria-label={`导出 PDF（消息 ${msg.id}）`}
-                title="打印看板，可在打印对话框中另存为 PDF"
-                className="flex items-center gap-1 text-[10px] normal-case tracking-normal text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 px-1.5 py-0.5 rounded hover:bg-blue-50 dark:hover:bg-blue-950/50 disabled:opacity-40 disabled:pointer-events-none transition-colors"
-              >
-                <Printer className="w-3 h-3" />
-                <span>导出 PDF</span>
-              </button>
+              <div className="flex items-center gap-0.5">
+                {onFavoriteDashboard && (
+                  <button
+                    type="button"
+                    onClick={() => onFavoriteDashboard(msg.id)}
+                    disabled={isStreaming || isFavoritePending}
+                    aria-label={
+                      isFavorited
+                        ? "已收藏，点击覆盖更新"
+                        : `收藏看板（消息 ${msg.id}）`
+                    }
+                    title={
+                      isFavorited
+                        ? "已收藏，点击覆盖更新为最新看板"
+                        : "收藏到看板库"
+                    }
+                    className={`flex items-center gap-1 text-[10px] normal-case tracking-normal px-1.5 py-0.5 rounded transition-colors disabled:opacity-40 disabled:pointer-events-none ${
+                      isFavorited
+                        ? "text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-950/50"
+                        : "text-slate-400 hover:text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-950/50"
+                    }`}
+                  >
+                    {isFavoritePending ? (
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                    ) : (
+                      <Star
+                        className={`w-3 h-3 ${isFavorited ? "fill-current" : ""}`}
+                      />
+                    )}
+                    <span>{isFavorited ? "已收藏" : "收藏"}</span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => onPrintDashboard?.(msg.id)}
+                  disabled={isStreaming}
+                  aria-label={`导出 PDF（消息 ${msg.id}）`}
+                  title="打印看板，可在打印对话框中另存为 PDF"
+                  className="flex items-center gap-1 text-[10px] normal-case tracking-normal text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 px-1.5 py-0.5 rounded hover:bg-blue-50 dark:hover:bg-blue-950/50 disabled:opacity-40 disabled:pointer-events-none transition-colors"
+                >
+                  <Printer className="w-3 h-3" />
+                  <span>导出 PDF</span>
+                </button>
+              </div>
             </div>
 
             <OpenUIRenderer
@@ -189,6 +231,12 @@ interface MessageListProps {
   activeSources?: { id: string; name: string }[];
   onRendererAction: (actionPrompt: string) => void;
   onReload: () => void;
+  /** 看板收藏：已收藏消息 id 集合（按收藏记录 origin.messageId 判定） */
+  favoritedMessageIds?: Set<string>;
+  /** 收藏回调：MessageList 组装 dsl/prompt/sourceNames/origin.messageId，sessionId 由上层补齐 */
+  onFavoriteDashboard?: (
+    input: FavoriteDashboardInput
+  ) => Promise<FavoriteResult>;
 }
 
 /** 距顶/底多远以内视为「已在顶/底」（阈值像素） */
@@ -202,6 +250,8 @@ export function MessageList({
   activeSources,
   onRendererAction,
   onReload,
+  favoritedMessageIds,
+  onFavoriteDashboard,
 }: MessageListProps) {
   // isLoading 与 status 同源，内部派生避免双重传参
   const isLoading = status === "submitted" || status === "streaming";
@@ -243,6 +293,51 @@ export function MessageList({
     setPrintTargetId(id);
   }, []);
 
+  /**
+   * 看板收藏：按消息组装收藏载荷（dsl 提取自消息内容；prompt 取该消息之前
+   * 最近一条用户提问；sourceNames 归档当前启用源名称；origin.messageId 用于
+   * 重复收藏覆盖判定）。结果 toast：新收藏/覆盖更新/失败（含 413 等服务端错误）。
+   */
+  const [pendingFavoriteId, setPendingFavoriteId] = useState<string | null>(null);
+
+  const handleFavoriteDashboard = useCallback(
+    async (msgId: string) => {
+      if (!onFavoriteDashboard) return;
+      const idx = messages.findIndex((m) => m.id === msgId);
+      if (idx < 0) return;
+      const { openuiPart } = extractOpenUI(messages[idx].content);
+      if (!openuiPart) return;
+
+      // 向前找最近一条用户提问作为「重新分析」种子
+      let prompt: string | undefined;
+      for (let i = idx - 1; i >= 0; i--) {
+        if (messages[i].role === "user") {
+          prompt = messages[i].content;
+          break;
+        }
+      }
+
+      const wasFavorited = favoritedMessageIds?.has(msgId) ?? false;
+      setPendingFavoriteId(msgId);
+      try {
+        const res = await onFavoriteDashboard({
+          dsl: openuiPart,
+          prompt,
+          sourceNames: activeSources?.map((s) => s.name),
+          origin: { messageId: msgId },
+        });
+        if (res.ok) {
+          toast(wasFavorited ? "收藏已更新" : "已收藏到看板库", "success");
+        } else {
+          toast(res.error || "收藏失败", "error");
+        }
+      } finally {
+        setPendingFavoriteId(null);
+      }
+    },
+    [messages, onFavoriteDashboard, favoritedMessageIds, activeSources]
+  );
+
   useEffect(() => {
     if (!printTargetId) return;
     document.body.classList.add("print-mode");
@@ -277,6 +372,11 @@ export function MessageList({
           onRendererAction={onRendererAction}
           isPrintTarget={printTargetId === msg.id}
           onPrintDashboard={handlePrintDashboard}
+          isFavorited={favoritedMessageIds?.has(msg.id) ?? false}
+          isFavoritePending={pendingFavoriteId === msg.id}
+          onFavoriteDashboard={
+            onFavoriteDashboard ? handleFavoriteDashboard : undefined
+          }
         />
       ))}
 

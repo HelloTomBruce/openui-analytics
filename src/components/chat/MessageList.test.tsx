@@ -1,13 +1,17 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent, waitFor, act } from "@testing-library/react";
 import type { Message } from "@ai-sdk/react";
 import { extractOpenUI } from "@/lib/extractOpenUI";
+import { toast } from "@/lib/toast";
 import { MessageList } from "./MessageList";
+import type { FavoriteResult } from "@/hooks/useDashboards";
 
 vi.mock("@/lib/extractOpenUI", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/extractOpenUI")>();
   return { ...actual, extractOpenUI: vi.fn(actual.extractOpenUI) };
 });
+
+vi.mock("@/lib/toast", () => ({ toast: vi.fn() }));
 
 vi.mock("@/components/OpenUIRenderer", () => ({
   OpenUIRenderer: () => <div data-testid="renderer" />,
@@ -304,5 +308,173 @@ describe("看板打印导出", () => {
     expect(thinking).not.toBeNull();
     // 看板本体（渲染器）不在 no-print 容器内
     expect(screen.getByTestId("renderer").closest(".no-print")).toBeNull();
+  });
+});
+
+describe("看板收藏", () => {
+  const boardMsg: Message = {
+    id: "b1",
+    role: "assistant",
+    content: "分析结论\n```openui\nroot = Root([table])\n```",
+  };
+
+  const baseProps = {
+    status: "ready" as const,
+    error: undefined,
+    showRawLang: false,
+    activeSources: undefined,
+    onRendererAction: vi.fn(),
+    onReload: vi.fn(),
+  };
+
+  afterEach(() => {
+    cleanup();
+    vi.clearAllMocks();
+  });
+
+  it("就绪看板显示收藏按钮；点击组装完整载荷（dsl/前文 prompt/origin.messageId）并成功 toast", async () => {
+    const onFavorite = vi.fn<() => Promise<FavoriteResult>>(
+      () => Promise.resolve({ ok: true })
+    );
+    render(
+      <MessageList
+        {...baseProps}
+        messages={[userMsg, boardMsg]}
+        onFavoriteDashboard={onFavorite}
+      />
+    );
+
+    const btn = screen.getByRole("button", { name: /收藏看板（消息 b1）/ });
+    expect(btn).not.toBeDisabled();
+
+    await act(async () => {
+      fireEvent.click(btn);
+    });
+
+    expect(onFavorite).toHaveBeenCalledWith({
+      dsl: "root = Root([table])",
+      prompt: "分析营收",
+      sourceNames: undefined,
+      origin: { messageId: "b1" },
+    });
+    expect(toast).toHaveBeenCalledWith("已收藏到看板库", "success");
+  });
+
+  it("已收藏（按 favoritedMessageIds 判定）显示实心态「已收藏」；再点仍调用（覆盖更新语义）", async () => {
+    const onFavorite = vi.fn<() => Promise<FavoriteResult>>(
+      () => Promise.resolve({ ok: true })
+    );
+    render(
+      <MessageList
+        {...baseProps}
+        messages={[userMsg, boardMsg]}
+        favoritedMessageIds={new Set(["b1"])}
+        onFavoriteDashboard={onFavorite}
+      />
+    );
+
+    const btn = screen.getByRole("button", { name: /已收藏，点击覆盖更新/ });
+    expect(btn).not.toBeDisabled();
+
+    await act(async () => {
+      fireEvent.click(btn);
+    });
+    expect(onFavorite).toHaveBeenCalledTimes(1);
+    expect(toast).toHaveBeenCalledWith("收藏已更新", "success");
+  });
+
+  it("收藏失败（如 413）→ toast 错误文案", async () => {
+    const onFavorite = vi.fn<() => Promise<FavoriteResult>>(() =>
+      Promise.resolve({ ok: false, error: "dsl 超过 2097152 字符上限（2MB）" })
+    );
+    render(
+      <MessageList
+        {...baseProps}
+        messages={[userMsg, boardMsg]}
+        onFavoriteDashboard={onFavorite}
+      />
+    );
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /收藏看板（消息 b1）/ }));
+    });
+    expect(toast).toHaveBeenCalledWith(
+      "dsl 超过 2097152 字符上限（2MB）",
+      "error"
+    );
+  });
+
+  it("流式中的收藏按钮禁用", () => {
+    render(
+      <MessageList
+        {...baseProps}
+        status="streaming"
+        messages={[userMsg, boardMsg]}
+        onFavoriteDashboard={vi.fn()}
+      />
+    );
+    expect(
+      screen.getByRole("button", { name: /收藏看板（消息 b1）/ })
+    ).toBeDisabled();
+  });
+
+  it("收藏进行中按钮禁用；完成后恢复并 toast", async () => {
+    let resolveFavorite!: (v: FavoriteResult) => void;
+    const deferred = new Promise<FavoriteResult>((r) => {
+      resolveFavorite = r;
+    });
+    const onFavorite = vi.fn(() => deferred);
+    render(
+      <MessageList
+        {...baseProps}
+        messages={[userMsg, boardMsg]}
+        onFavoriteDashboard={onFavorite}
+      />
+    );
+
+    const btn = screen.getByRole("button", { name: /收藏看板（消息 b1）/ });
+    await act(async () => {
+      fireEvent.click(btn);
+    });
+
+    // 进行中：禁用（loading 态）
+    await waitFor(() => expect(btn).toBeDisabled());
+
+    await act(async () => {
+      resolveFavorite({ ok: true });
+    });
+    await waitFor(() => expect(btn).not.toBeDisabled());
+    expect(toast).toHaveBeenCalledWith("已收藏到看板库", "success");
+  });
+
+  it("未提供收藏回调时不显示收藏按钮", () => {
+    render(<MessageList {...baseProps} messages={[userMsg, boardMsg]} />);
+    expect(
+      screen.queryByRole("button", { name: /收藏/ })
+    ).not.toBeInTheDocument();
+  });
+
+  it("sourceNames 归档当前启用源名称", async () => {
+    const onFavorite = vi.fn<() => Promise<FavoriteResult>>(
+      () => Promise.resolve({ ok: true })
+    );
+    render(
+      <MessageList
+        {...baseProps}
+        activeSources={[
+          { id: "gitlab", name: "GitLab" },
+          { id: "zentao", name: "禅道" },
+        ]}
+        messages={[userMsg, boardMsg]}
+        onFavoriteDashboard={onFavorite}
+      />
+    );
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /收藏看板（消息 b1）/ }));
+    });
+    expect(onFavorite).toHaveBeenCalledWith(
+      expect.objectContaining({ sourceNames: ["GitLab", "禅道"] })
+    );
   });
 });
