@@ -13,10 +13,18 @@ import {
   Code2,
   FileCode,
   Sparkles,
+  LayoutGrid,
+  Eye,
+  RefreshCw,
+  Edit3,
+  Check,
+  Star,
 } from "lucide-react";
 import type { ChatSession } from "@/lib/sessionStorage";
+// 仅取类型（编译期擦除）
+import type { DashboardSummary } from "@/lib/dashboardStore";
 import { PRESET_QUERIES } from "@/lib/presetQueries";
-import { SessionListItem } from "./SessionListItem";
+import { SessionListItem, formatSessionTime } from "./SessionListItem";
 
 interface ChatSidebarProps {
   sessions: ChatSession[];
@@ -26,6 +34,13 @@ interface ChatSidebarProps {
   apiKey: string;
   model: string;
   showRawLang: boolean;
+  /** 看板收藏库（服务端存储，跨浏览器可用） */
+  dashboards: DashboardSummary[];
+  onPreviewDashboard: (id: string) => void;
+  /** 重新分析：prompt 交回当前会话；未记录提问时由上层提示 */
+  onReanalyzeDashboard: (prompt?: string) => void;
+  onRenameDashboard: (id: string, title: string) => void;
+  onDeleteDashboard: (id: string) => void;
   onCreateNewChat: () => void;
   onSelectSession: (sessionId: string) => void;
   onStartRename: (e: React.MouseEvent, session: ChatSession) => void;
@@ -48,6 +63,11 @@ export function ChatSidebar({
   apiKey,
   model,
   showRawLang,
+  dashboards,
+  onPreviewDashboard,
+  onReanalyzeDashboard,
+  onRenameDashboard,
+  onDeleteDashboard,
   onCreateNewChat,
   onSelectSession,
   onStartRename,
@@ -61,7 +81,9 @@ export function ChatSidebar({
   onOpenDevTools,
   onToggleRawLang,
 }: ChatSidebarProps) {
-  const [sidebarTab, setSidebarTab] = useState<"history" | "presets">("history");
+  const [sidebarTab, setSidebarTab] = useState<
+    "history" | "dashboards" | "presets"
+  >("history");
   const [sessionSearch, setSessionSearch] = useState("");
 
   // 过滤后的会话列表
@@ -100,25 +122,36 @@ export function ChatSidebar({
         <div className="flex bg-slate-100 dark:bg-slate-800/70 p-1 rounded-lg text-xs font-medium">
           <button
             onClick={() => setSidebarTab("history")}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md transition-all ${
+            className={`flex-1 flex items-center justify-center gap-1 py-1.5 rounded-md transition-all ${
               sidebarTab === "history"
                 ? "bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-xs font-semibold"
                 : "text-slate-500 hover:text-slate-900 dark:hover:text-slate-200"
             }`}
           >
             <History className="w-3.5 h-3.5" />
-            <span>历史会话 ({sessions.length})</span>
+            <span>历史 ({sessions.length})</span>
+          </button>
+          <button
+            onClick={() => setSidebarTab("dashboards")}
+            className={`flex-1 flex items-center justify-center gap-1 py-1.5 rounded-md transition-all ${
+              sidebarTab === "dashboards"
+                ? "bg-white dark:bg-slate-900 text-amber-600 dark:text-amber-400 shadow-xs font-semibold"
+                : "text-slate-500 hover:text-slate-900 dark:hover:text-slate-200"
+            }`}
+          >
+            <LayoutGrid className="w-3.5 h-3.5" />
+            <span>看板 ({dashboards.length})</span>
           </button>
           <button
             onClick={() => setSidebarTab("presets")}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md transition-all ${
+            className={`flex-1 flex items-center justify-center gap-1 py-1.5 rounded-md transition-all ${
               sidebarTab === "presets"
                 ? "bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-xs font-semibold"
                 : "text-slate-500 hover:text-slate-900 dark:hover:text-slate-200"
             }`}
           >
             <Compass className="w-3.5 h-3.5" />
-            <span>推荐场景</span>
+            <span>推荐</span>
           </button>
         </div>
       </div>
@@ -173,6 +206,34 @@ export function ChatSidebar({
               <span>清空所有记录</span>
             </button>
           </div>
+        </div>
+      )}
+
+      {/* 看板收藏库视图 */}
+      {sidebarTab === "dashboards" && (
+        <div className="flex-1 overflow-y-auto px-3 py-2 space-y-1">
+          <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider px-1 pb-1">
+            收藏的看板（服务端存储，跨浏览器可用）
+          </div>
+          {dashboards.length === 0 ? (
+            <div className="text-center py-10 px-3 text-xs text-slate-400 leading-relaxed">
+              <Star className="w-5 h-5 mx-auto mb-2 text-slate-300 dark:text-slate-600" />
+              还没有收藏的看板
+              <br />
+              对话生成看板后，点击看板右上角 <span className="text-amber-500">★ 收藏</span> 保存到这里
+            </div>
+          ) : (
+            dashboards.map((d) => (
+              <DashboardListItem
+                key={d.id}
+                dashboard={d}
+                onPreview={onPreviewDashboard}
+                onReanalyze={onReanalyzeDashboard}
+                onRename={onRenameDashboard}
+                onDelete={onDeleteDashboard}
+              />
+            ))
+          )}
         </div>
       )}
 
@@ -234,5 +295,134 @@ export function ChatSidebar({
         </div>
       </div>
     </aside>
+  );
+}
+
+/** 看板收藏列表项：查看 / 重新分析 / 行内重命名 / 删除（行内二次确认） */
+function DashboardListItem({
+  dashboard,
+  onPreview,
+  onReanalyze,
+  onRename,
+  onDelete,
+}: {
+  dashboard: DashboardSummary;
+  onPreview: (id: string) => void;
+  onReanalyze: (prompt?: string) => void;
+  onRename: (id: string, title: string) => void;
+  onDelete: (id: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(dashboard.title);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  const saveRename = () => {
+    const trimmed = draft.trim();
+    if (trimmed && trimmed !== dashboard.title) onRename(dashboard.id, trimmed);
+    setEditing(false);
+  };
+
+  return (
+    <div
+      onClick={() => !editing && onPreview(dashboard.id)}
+      className="group relative flex items-center justify-between p-2.5 rounded-xl text-xs cursor-pointer transition-all border border-transparent hover:bg-slate-100/80 dark:hover:bg-slate-800/60 text-slate-600 dark:text-slate-300"
+    >
+      <div className="min-w-0 flex-1 pr-1">
+        {editing ? (
+          <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+            <input
+              autoFocus
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") saveRename();
+                if (e.key === "Escape") setEditing(false);
+              }}
+              aria-label={`重命名看板 ${dashboard.title}`}
+              className="flex-1 min-w-0 px-2 py-1 bg-slate-50 dark:bg-slate-950 border border-blue-300 dark:border-blue-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
+            <button
+              onClick={saveRename}
+              aria-label="保存标题"
+              className="p-1 rounded text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/50"
+            >
+              <Check className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        ) : (
+          <>
+            <div className="flex items-center gap-1.5">
+              <Star className="w-3 h-3 text-amber-500 fill-current shrink-0" />
+              <span className="font-medium truncate">{dashboard.title}</span>
+            </div>
+            <div className="mt-0.5 text-[11px] text-slate-400 truncate">
+              {dashboard.prompt ? dashboard.prompt : "（未记录原始提问）"}
+            </div>
+            <div className="mt-0.5 flex items-center gap-2 text-[10px] text-slate-400">
+              <span>{formatSessionTime(dashboard.updatedAt)}</span>
+              {dashboard.sourceNames && dashboard.sourceNames.length > 0 && (
+                <span className="px-1 py-0.5 rounded bg-slate-100 dark:bg-slate-800 truncate">
+                  {dashboard.sourceNames.join(" / ")}
+                </span>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* 行内操作：编辑态隐藏；点击不冒泡到行预览 */}
+      {!editing && (
+        <div
+          className="flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            onClick={() => onPreview(dashboard.id)}
+            aria-label={`查看看板 ${dashboard.title}`}
+            title="查看看板"
+            className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/50"
+          >
+            <Eye className="w-3.5 h-3.5" />
+          </button>
+          <button
+            onClick={() => onReanalyze(dashboard.prompt)}
+            disabled={!dashboard.prompt}
+            aria-label={`重新分析 ${dashboard.title}`}
+            title={dashboard.prompt ? "用原始提问重新分析" : "未记录原始提问"}
+            className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/50 disabled:opacity-30 disabled:pointer-events-none"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+          </button>
+          <button
+            onClick={() => {
+              setDraft(dashboard.title);
+              setEditing(true);
+            }}
+            aria-label={`重命名看板 ${dashboard.title}`}
+            title="重命名"
+            className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/50"
+          >
+            <Edit3 className="w-3.5 h-3.5" />
+          </button>
+          {confirmDelete ? (
+            <button
+              onClick={() => onDelete(dashboard.id)}
+              className="px-1.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-medium"
+            >
+              确认
+            </button>
+          ) : (
+            <button
+              onClick={() => setConfirmDelete(true)}
+              aria-label={`删除看板 ${dashboard.title}`}
+              title="删除收藏"
+              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/50"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+      )}
+    </div>
   );
 }

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { authHeaders } from "@/lib/auth";
 // 仅取类型（编译期擦除，不会把 server-only 的 dashboardStore 打进客户端包）
-import type { DashboardSummary } from "@/lib/dashboardStore";
+import type { DashboardRecord, DashboardSummary } from "@/lib/dashboardStore";
 
 /**
  * 看板收藏库客户端状态：列表 / 收藏 / 重命名 / 删除。
@@ -70,6 +70,26 @@ export function useDashboards() {
     setLoaded(true);
   }, []);
 
+  /** 拉取单条完整记录（含 dsl，预览用）；未知/失败返回 null */
+  const get = useCallback(async (id: string): Promise<DashboardRecord | null> => {
+    try {
+      const res = await fetch(`/api/dashboards/${encodeURIComponent(id)}`, {
+        headers: { ...authHeaders() },
+        cache: "no-store",
+      });
+      if (!res.ok) return null;
+      const body = await res.json().catch(() => null);
+      const record = (body as { dashboard?: unknown } | null)?.dashboard;
+      return record !== null &&
+        typeof record === "object" &&
+        typeof (record as DashboardRecord).dsl === "string"
+        ? (record as DashboardRecord)
+        : null;
+    } catch {
+      return null;
+    }
+  }, []);
+
   /** 收藏/覆盖收藏；成功后自动刷新列表 */
   const favorite = useCallback(
     async (input: FavoriteDashboardInput): Promise<FavoriteResult> => {
@@ -131,5 +151,5 @@ export function useDashboards() {
     [refresh]
   );
 
-  return { summaries, loaded, refresh, favorite, rename, remove };
+  return { summaries, loaded, refresh, get, favorite, rename, remove };
 }

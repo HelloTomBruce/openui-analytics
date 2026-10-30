@@ -11,6 +11,7 @@ const buildUseChatResult = vi.hoisted(
       messages,
       setMessages: vi.fn(),
       input: "",
+      setInput: vi.fn(),
       handleInputChange: vi.fn(),
       handleSubmit: vi.fn((e?: { preventDefault?: () => void }) =>
         e?.preventDefault?.()
@@ -214,7 +215,8 @@ describe("ChatDashboard 守护测试（重构行为锁定）", () => {
     });
 
     // 预设场景：不带 mode（直出），也不受待确认规划影响
-    fireEvent.click(screen.getByText("推荐场景"));
+    // （侧栏三 tab 改版后文案为「历史 / 看板 / 推荐」）
+    fireEvent.click(screen.getByText("推荐"));
     fireEvent.click(
       screen.getByText(/本迭代各项目的 Bug 收敛情况/, { exact: false })
     );

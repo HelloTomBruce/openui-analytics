@@ -8,6 +8,9 @@ import { upsertMessage } from "@/lib/messages";
 import { useLlmSettings } from "@/hooks/useLlmSettings";
 import { useSessionManager } from "@/hooks/useSessionManager";
 import { useDashboards, type FavoriteDashboardInput } from "@/hooks/useDashboards";
+import { DashboardPreviewModal } from "@/components/chat/DashboardPreviewModal";
+// 仅取类型（编译期擦除）
+import type { DashboardRecord } from "@/lib/dashboardStore";
 import { ChatSidebar } from "@/components/chat/ChatSidebar";
 import { MessageList } from "@/components/chat/MessageList";
 import { ChatInput } from "@/components/chat/ChatInput";
@@ -80,9 +83,14 @@ export default function ChatDashboard() {
     console.error("Chat error:", err);
   }, []);
 
-  // 看板收藏库：列表/收藏/重命名/删除（列表同时驱动侧栏看板库，见 TASK-008）
-  const { summaries: dashboardSummaries, favorite: favoriteDashboard } =
-    useDashboards();
+  // 看板收藏库：列表/收藏/重命名/删除（列表同时驱动侧栏看板库）
+  const {
+    summaries: dashboardSummaries,
+    get: getDashboard,
+    favorite: favoriteDashboard,
+    rename: renameDashboard,
+    remove: removeDashboard,
+  } = useDashboards();
   // 星标判定集合：收藏记录的 origin.messageId
   const favoritedMessageIds = useMemo(() => {
     const ids = new Set<string>();
@@ -138,6 +146,7 @@ export default function ChatDashboard() {
     messages,
     setMessages,
     input,
+    setInput,
     handleInputChange,
     handleSubmit,
     status,
@@ -217,9 +226,68 @@ export default function ChatDashboard() {
     [append, currentSessionId]
   );
 
+  // ===== 看板收藏库交互（依赖 useChat 的 append/setInput，须在 useChat 之后定义）=====
+
+  // 只读预览：点击查看时拉取完整记录（含 dsl）
+  const [previewDashboard, setPreviewDashboard] = useState<DashboardRecord | null>(
+    null
+  );
+
+  const handlePreviewDashboard = useCallback(
+    async (id: string) => {
+      const record = await getDashboard(id);
+      if (record) {
+        setPreviewDashboard(record);
+      } else {
+        toast("看板不存在或已删除", "error");
+      }
+    },
+    [getDashboard]
+  );
+
+  // 重新分析：原始提问作为新用户消息进入当前会话（沿用预设场景的直出模式与当前会话源设置）
+  const handleReanalyzeDashboard = useCallback(
+    (prompt?: string) => {
+      if (!prompt) {
+        toast("该收藏未记录原始提问，请在输入框输入问题后发送", "info");
+        return;
+      }
+      streamingSessionIdRef.current = currentSessionId;
+      append({ role: "user", content: prompt });
+      setPreviewDashboard(null);
+    },
+    [append, currentSessionId]
+  );
+
+  const handleRenameDashboard = useCallback(
+    async (id: string, title: string) => {
+      const ok = await renameDashboard(id, title);
+      toast(ok ? "已重命名" : "重命名失败", ok ? "success" : "error");
+    },
+    [renameDashboard]
+  );
+
+  const handleDeleteDashboard = useCallback(
+    async (id: string) => {
+      const ok = await removeDashboard(id);
+      toast(ok ? "已删除收藏" : "删除失败", ok ? "success" : "error");
+      if (ok) setPreviewDashboard(null);
+    },
+    [removeDashboard]
+  );
+
   const handleDevToolsAction = useCallback((msg: string) => {
     toast(`触发 Action: ${msg}`, "info");
   }, []);
+
+  // 预览看板的交互动作：注入输入框（不自动发送），并关闭预览让用户看到输入区
+  const handlePreviewAction = useCallback(
+    (actionPrompt: string) => {
+      setInput(actionPrompt);
+      setPreviewDashboard(null);
+    },
+    [setInput]
+  );
 
   // 稳定回调：配合子组件 memo 化，避免每次渲染传递新闭包
   const handleToggleRawLang = useCallback(() => setShowRawLang((v) => !v), []);
@@ -239,6 +307,11 @@ export default function ChatDashboard() {
         apiKey={apiKey}
         model={model}
         showRawLang={showRawLang}
+        dashboards={dashboardSummaries}
+        onPreviewDashboard={handlePreviewDashboard}
+        onReanalyzeDashboard={handleReanalyzeDashboard}
+        onRenameDashboard={handleRenameDashboard}
+        onDeleteDashboard={handleDeleteDashboard}
         onCreateNewChat={handleCreateNewChat}
         onSelectSession={handleSelectSession}
         onStartRename={handleStartRename}
@@ -338,6 +411,16 @@ export default function ChatDashboard() {
           onClose={handleCloseDevTools}
         />
       )}
+
+      {/* 收藏看板只读预览 */}
+      <DashboardPreviewModal
+        dashboard={previewDashboard}
+        onClose={() => setPreviewDashboard(null)}
+        onReanalyze={handleReanalyzeDashboard}
+        onRename={handleRenameDashboard}
+        onDelete={handleDeleteDashboard}
+        onAction={handlePreviewAction}
+      />
 
       {showSettings && (
         <SettingsModal
