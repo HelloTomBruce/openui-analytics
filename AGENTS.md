@@ -28,10 +28,14 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 | --- | --- |
 | `packages/openui-components/src/**` | 看板组件库规范 |
 | `packages/openui-datasources/src/**` | 动态数据源管理；新增内置数据源 → 数据源体系 下对应子节点 |
+| `packages/openui-datasources/src/schema/**` | 数据源接入强化（P1-A Schema Card） |
 | `packages/openui-llm/src/**` | 对话式分析与看板生成（编排与提示词） |
+| `packages/openui-llm/src/methodology/**` | 个性化场景分析（P1 方法论库） |
 | `src/app/api/analyze/**` | API 接口（/api/analyze 段） |
 | `src/app/api/datasources/**` | API 接口 + 数据源管理 |
+| `src/app/api/dashboards/**` | 看板留存与分享（收藏夹与快照） |
 | `src/components/chat/**`、`src/hooks/**` | 功能模块 下对应子节点 |
+| `src/lib/dashboardStore.ts` | 看板留存与分享（收藏夹与快照） |
 | `src/lib/presetQueries.ts` | 核心用户流程（预设场景段）、DevTools 调试面板 |
 | 环境变量 / 鉴权 / 部署配置 | 安全与部署 |
 
