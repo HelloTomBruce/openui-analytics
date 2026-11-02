@@ -75,4 +75,5 @@ pnpm run build    # 生产构建
 
 1. 配置 `OPENUI_API_AUTH_TOKEN` 启用 API 鉴权（见环境变量章节）；
 2. 为 PostgreSQL 连接使用**只读角色**（应用层守卫之外的第二道防线）；
-3. 限制可访问的 GitLab MCP endpoint 范围（SSRF 面）。
+3. 限制可访问的 GitLab MCP endpoint 范围（SSRF 面）；
+4. `data/` 目录含敏感数据副本：`data/schema-cards/`（表结构/取值分布画像）与 `data/files/`、`data/dashboards/`（数据快照与 DSL）——部署环境请收紧目录权限，并知悉这些文件**不经过任何鉴权**即可被本机进程读取。
