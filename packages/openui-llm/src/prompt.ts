@@ -95,16 +95,22 @@ The cards above were generated from live schema inspection. Prefer them over cal
 }
 
 /**
- * 方法论索引段（direct/plan 常驻）：方法卡渲染文本由 @openui-analytics/methodology
- * 的 renderMethodIndex 产出，本包只负责拼接与引导语。缺省（无库/未注入）零输出。
+ * 方法论索引段（纯索引文本，direct/plan 共用，不含任何模式语义——
+ * 引导语按模式拆分，避免「写进看板标题」之类 direct 措辞混入 plan 造成矛盾指令）。
  */
 function methodIndexSection(methodIndex?: string): string {
   if (!methodIndex) return "";
   return `
 
-${methodIndex}
+${methodIndex}`;
+}
 
-Pick the most fitting method(s) from the index by the question's intent and NAME them in the dashboard title or insights so the analysis approach is visible.`;
+/** direct 专属引导：产出看板时显式声明所用方法 */
+function methodNamingSection(methodIndex?: string): string {
+  if (!methodIndex) return "";
+  return `
+
+Pick the most fitting method(s) from the index above by the question's intent and NAME them in the dashboard title or insights so the analysis approach is visible.`;
 }
 
 /** plan 模式选法指令段：仅注入索引时出现（无索引时选法无从谈起） */
@@ -140,6 +146,7 @@ export function getOpenUISystemPrompt(
 ${dataAccessSection(activeSources)}
 ${schemaDigestSection(schemaDigest)}
 ${methodIndexSection(methodIndex)}
+${methodNamingSection(methodIndex)}
 
 ## Cross-Source Joint Analysis (禅道 × GitLab):
 When a question involves BOTH project progress/quality (ZenTao) AND code activity (GitLab), e.g. "为什么这个迭代延期了" or "这个项目代码活跃度与 bug 趋势的关系":

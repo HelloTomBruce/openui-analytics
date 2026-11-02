@@ -168,3 +168,20 @@ describe("方法论注入（三模式）", () => {
     expect(Buffer.byteLength(text, "utf-8")).toBeLessThanOrEqual(INDEX_BUDGET_BYTES);
   });
 });
+
+describe("模式语义隔离（回归：direct 引导语泄漏进 plan 造成矛盾指令）", () => {
+  const INDEX = "## Analysis Method Index (pick by the question's intent):\n- trend: 趋势与同比环比 — 指标随时间如何变化";
+
+  it("plan prompt 不含「写进看板标题」等 direct 专属措辞", () => {
+    const plan = getOpenUIPlanPrompt(ACTIVE, undefined, INDEX);
+    expect(plan).not.toContain("dashboard title");
+    expect(plan).not.toContain("NAME them in the dashboard");
+    // plan 的选法指令指向 PlanReviewCard
+    expect(plan).toContain("PlanReviewCard title or a step's detail");
+  });
+
+  it("direct prompt 保留方法命名引导（看板标题/洞察）", () => {
+    const direct = getOpenUISystemPrompt(ACTIVE, undefined, INDEX);
+    expect(direct).toContain("NAME them in the dashboard title or insights");
+  });
+});
