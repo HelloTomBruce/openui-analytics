@@ -14,3 +14,16 @@ export {
   type FileTableInfo,
   type FileSourceUpload,
 } from "./connectors/file/fileStore";
+// Schema Card：类型与渲染为 client-safe（含 node:fs 的 store 不走主入口，
+// 服务端经子路径 @openui-analytics/datasources/schema/store 引入）
+export {
+  type SchemaCard,
+  type SchemaCardTable,
+  type SchemaCardColumn,
+  type SchemaCardToolSummary,
+  type RawTableProfile,
+  CARD_RENDER_BUDGET_BYTES,
+  CARD_STORE_MAX_BYTES,
+  LOW_CARDINALITY_THRESHOLD,
+  renderCardForPrompt,
+} from "./schema/card";

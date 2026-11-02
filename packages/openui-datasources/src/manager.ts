@@ -16,6 +16,13 @@ import {
 } from "./connectors/file/fileStore";
 import { parseMcpToolResult } from "./parseToolResult";
 import {
+  collectSchemaCard,
+  buildMcpToolCard,
+  type SchemaCard,
+  type SchemaProbe,
+} from "./schema/card";
+import { readSchemaCard, writeSchemaCard } from "./schema/store";
+import {
   loadConfigFile,
   writeConfigFile,
   validateSourceConfig,
@@ -105,10 +112,23 @@ export interface DatasourceManager {
   filesManifest(id: string): Promise<FileSourceManifest | null>;
   /** 删除文件源全部落盘内容（调用方负责先 close） */
   removeFiles(id: string): Promise<void>;
+  /**
+   * Schema Card：读取已生成结构卡（无卡/坏卡返回 null——由 tools() 装配惰性触发重建）。
+   * 返回标记 stale：配置变更或执行期列缺失错误会标脏（后台重建中）。
+   */
+  getSchemaCard(id: string): Promise<{ card: SchemaCard; stale: boolean } | null>;
+  /** 手动重建结构卡：按源串行排队，返回完成 promise（路由可 202 后不等待） */
+  refreshSchemaCard(id: string): Promise<void>;
 }
 
 const DB_SOURCE_TOOLS = ["execute_sql", "list_tables", "describe_table"];
 const HEALTH_TIMEOUT_MS = 3000;
+/**
+ * 执行期结构漂移信号：列/表缺失类错误（pg/mysql/duckdb/clickhouse 常见文案）。
+ * 命中即标脏触发结构卡后台重建；属启发式 UX 层，误判代价仅为多建一次卡。
+ */
+const SCHEMA_MISS_RE =
+  /column .{0,64}(does not exist|not found)|unknown column|no such column|unknown identifier|binder error|there is no column|doesn't exist/i;
 
 interface ConnCacheEntry {
   key: string;
@@ -322,10 +342,15 @@ export function createDatasourceManager(opts: {
   configPath: string;
   /** 文件数据源落盘根目录；默认 <configPath 同级>/../data/files */
   filesDir?: string;
+  /** Schema Card 落盘根目录；默认 <configPath 同级>/../data/schema-cards */
+  schemaCardsDir?: string;
 }): DatasourceManager {
   const { configPath } = opts;
   const filesDir =
     opts.filesDir ?? path.join(path.dirname(configPath), "..", "data", "files");
+  const schemaCardsDir =
+    opts.schemaCardsDir ??
+    path.join(path.dirname(configPath), "..", "data", "schema-cards");
   let configCache: DatasourcesConfig | null = null;
   const connCache = new Map<string, ConnCacheEntry>();
   /**
@@ -333,6 +358,108 @@ export function createDatasourceManager(opts: {
    * 并发上传会互相抹除进行中构建并竞态交换，必须排队。
    */
   const ingestChains = new Map<string, Promise<unknown>>();
+  /** Schema Card 标脏集合：配置变更/执行期列缺失错误置位，后台重建后清除 */
+  const cardDirty = new Set<string>();
+  /**
+   * 建卡状态机：ok（有卡且新鲜）/ failed（最近一次构建失败）。
+   * failed 状态下 tools() 不再自动重试（防失败洪水），仅新的标脏事件
+   * （配置变更/列缺失/重灌/手动刷新）清除 failed 并重新触发。
+   */
+  const cardBuildState = new Map<string, "ok" | "failed">();
+  /** 按源 id 的建卡串行链：并发触发（tools 装配 + 错误标脏 + 手动刷新）排队合并 */
+  const cardChains = new Map<string, Promise<void>>();
+
+  /** 标脏并触发后台重建（配置变更/列缺失/重灌共用的唯一入口） */
+  const invalidateCard = (source: DynamicSourceConfig): void => {
+    cardDirty.add(source.id);
+    cardBuildState.delete(source.id); // 新的标脏事件允许失败重试
+    scheduleCardBuild(source);
+  };
+
+  /**
+   * 结构卡后台重建（fire-and-forget 安全包装）：
+   * 同源并发生成合并到串行链；失败标记 failed 并不再自动重试（直到新的标脏事件）。
+   */
+  const scheduleCardBuild = (source: DynamicSourceConfig): void => {
+    const prev = cardChains.get(source.id) ?? Promise.resolve();
+    const task = prev
+      .catch(() => {})
+      .then(async () => {
+        try {
+          const card = await buildCardForSource(source);
+          await writeSchemaCard(schemaCardsDir, card);
+          cardDirty.delete(source.id);
+          cardBuildState.set(source.id, "ok");
+        } catch (err) {
+          cardDirty.delete(source.id);
+          cardBuildState.set(source.id, "failed");
+          console.warn(
+            `[schema-card] 重建失败（${source.id}）:`,
+            err instanceof Error ? err.message : err
+          );
+        }
+      });
+    cardChains.set(source.id, task);
+    // 吞掉 rejection：调用方（tools/错误钩子）不等待
+    task.catch(() => {});
+  };
+
+  /**
+   * 构建单源结构卡：db/file 走表画像采集；http/stdio 仅记工具摘要。
+   * 用**专用短生命周期连接**（不进 connCache，用完即关）——
+   * 避免建卡与查询流量竞争缓存连接（双连竞态/旧文件句柄）。
+   */
+  const buildCardForSource = async (
+    source: DynamicSourceConfig
+  ): Promise<SchemaCard> => {
+    const connection =
+      source.kind === "http-mcp"
+        ? await connectHttpSource(source)
+        : source.kind === "db"
+          ? await connectDbSource(source)
+          : source.kind === "file"
+            ? await connectFileSource(source, filesDir)
+            : await connectStdioSource(source);
+    try {
+      if (source.kind === "http-mcp" || source.kind === "stdio-cli") {
+        const tools = await connection.listTools();
+        return buildMcpToolCard({ sourceId: source.id, tools });
+      }
+      const probe: SchemaProbe = {
+        listTables: async () =>
+          (await callJson(connection, "list_tables", {})) as {
+            table: string;
+          }[],
+        describeTable: async (table) =>
+          (await callJson(connection, "describe_table", {
+            table_name: table,
+          })) as { column: string; type: string }[],
+        query: async (sql) => {
+          const res = (await callJson(connection, "execute_sql", { sql })) as {
+            rows?: Record<string, unknown>[];
+          };
+          return res.rows ?? [];
+        },
+      };
+      const quoteIdent =
+        source.kind === "db" && source.dbType === "mysql"
+          ? (name: string) => `\`${name.replace(/`/g, "``")}\``
+          : (name: string) => `"${name.replace(/"/g, '""')}"`;
+      return await collectSchemaCard({ sourceId: source.id, probe, quoteIdent });
+    } finally {
+      await connection.close().catch(() => {});
+    }
+  };
+
+  /** MCP 工具 JSON 结果通道：list/describe/execute_sql 的 text JSON 统一解析 */
+  const callJson = async (
+    connection: McpConnection,
+    tool: string,
+    args: Record<string, unknown>
+  ): Promise<unknown> => {
+    const res = await connection.callTool(tool, args);
+    return parseMcpToolResult(res, `schema-card ${tool}`);
+  };
 
   const readConfig = (): DatasourcesConfig => {
     if (configCache === null) configCache = loadConfigFile(configPath);
@@ -352,6 +479,9 @@ export function createDatasourceManager(opts: {
 
     if (cached) {
       connCache.delete(source.id);
+      // 配置变更 → 结构卡标脏（缓存失效单通道：与连接缓存同钩子）
+      cardDirty.add(source.id);
+      cardBuildState.delete(source.id); // 允许失败重试
       try {
         await cached.connection.close();
       } catch {
@@ -369,6 +499,8 @@ export function createDatasourceManager(opts: {
             : await connectStdioSource(source);
     const entry: ConnCacheEntry = { key, connection };
     connCache.set(source.id, entry);
+    // 配置变更后的重建：异步进行，不阻塞连接返回
+    if (cardDirty.has(source.id)) scheduleCardBuild(source);
     return entry;
   };
 
@@ -400,6 +532,15 @@ export function createDatasourceManager(opts: {
     connect: (s) => getOrConnectEntry(s).then((e) => e.connection),
     async tools(source) {
       const entry = await getOrConnectEntry(source);
+      // 结构卡惰性生成：无卡且未失败过时后台建一次；已标脏（新失效事件）时重建。
+      // failed 状态不自动重试——防止不可用源每次装配都触发失败洪水。
+      void readSchemaCard(schemaCardsDir, source.id).then((card) => {
+        const attempted = cardBuildState.has(source.id);
+        const dirty = cardDirty.has(source.id);
+        if (dirty || (card === null && !attempted)) {
+          scheduleCardBuild(source);
+        }
+      });
       if (entry.bindings) return entry.bindings;
       const connection = entry.connection;
       const mcpTools = await connection.listTools();
@@ -412,7 +553,17 @@ export function createDatasourceManager(opts: {
         call: async (args: Record<string, unknown>) => {
           console.log(`[${logPrefix}] execute ${t.name}:`, args);
           const res = await connection.callTool(t.name, args);
-          return parseMcpToolResult(res, `MCP tool ${t.name}`);
+          try {
+            return parseMcpToolResult(res, `MCP tool ${t.name}`);
+          } catch (err) {
+            // 执行期结构漂移信号（列不存在等）→ 标脏 + 后台重建；
+            // 不做请求内重试，LLM 下一次调用自然读到新卡
+            const message = err instanceof Error ? err.message : String(err);
+            if (SCHEMA_MISS_RE.test(message) && !cardDirty.has(source.id)) {
+              invalidateCard(source);
+            }
+            throw err;
+          }
         },
       }));
       entry.bindings = bindings;
@@ -513,7 +664,10 @@ export function createDatasourceManager(opts: {
             // 关闭失败不阻断灌库
           }
         }
-        return ingestSourceFiles(filesDir, id, uploads);
+        const manifest = await ingestSourceFiles(filesDir, id, uploads);
+        // 重灌 = 表结构可能变化：标脏并后台重建结构卡
+        invalidateCard(source);
+        return manifest;
       });
       ingestChains.set(id, task);
       try {
@@ -527,6 +681,29 @@ export function createDatasourceManager(opts: {
     },
     removeFiles(id) {
       return removeSourceFiles(filesDir, id);
+    },
+    async getSchemaCard(id) {
+      const card = await readSchemaCard(schemaCardsDir, id);
+      if (!card) return null;
+      return { card, stale: cardDirty.has(id) };
+    },
+    refreshSchemaCard(id) {
+      const source = readConfig().sources.find((s) => s.id === id);
+      if (!source) return Promise.reject(new Error(`数据源不存在: ${id}`));
+      cardDirty.add(id);
+      cardBuildState.delete(id); // 手动刷新 = 明确的重试授权
+      // 与后台串行链合并：手动刷新同样排队，返回完成 promise 供测试/调用方等待
+      const prev = cardChains.get(id) ?? Promise.resolve();
+      const task = prev
+        .catch(() => {})
+        .then(async () => {
+          const card = await buildCardForSource(source);
+          await writeSchemaCard(schemaCardsDir, card);
+          cardDirty.delete(id);
+          cardBuildState.set(id, "ok");
+        });
+      cardChains.set(id, task);
+      return task;
     },
   };
 }

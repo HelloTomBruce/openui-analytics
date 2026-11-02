@@ -5,7 +5,9 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./adapters/ai": "./src/adapters/ai.ts"
+    "./adapters/ai": "./src/adapters/ai.ts",
+    "./schema/card": "./src/schema/card.ts",
+    "./schema/store": "./src/schema/store.ts"
   },
   "scripts": {
     "test": "vitest run"
