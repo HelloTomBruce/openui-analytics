@@ -16,6 +16,8 @@ const baseProps = {
   onReanalyzeDashboard: vi.fn(),
   onRenameDashboard: vi.fn(),
   onDeleteDashboard: vi.fn(),
+  onExportDashboard: vi.fn(),
+  onImportDashboard: vi.fn(),
   onCreateNewChat: vi.fn(),
   onSelectSession: vi.fn(),
   onStartRename: vi.fn(),
@@ -127,5 +129,32 @@ describe("ChatSidebar 看板库 tab", () => {
     fireEvent.click(screen.getByRole("button", { name: "确认" }));
     expect(props.onDeleteDashboard).toHaveBeenCalledWith("dash_ab12cd34");
     expect(props.onPreviewDashboard).not.toHaveBeenCalled();
+  });
+
+  it("条目导出按钮触发 onExportDashboard 且不冒泡", () => {
+    const props = { ...baseProps, dashboards: [SUMMARY] };
+    render(<ChatSidebar {...props} />);
+    switchToDashboards();
+
+    fireEvent.click(screen.getByRole("button", { name: /导出看板 Bug 收敛漏斗/ }));
+    expect(props.onExportDashboard).toHaveBeenCalledWith("dash_ab12cd34");
+    expect(props.onPreviewDashboard).not.toHaveBeenCalled();
+  });
+
+  it("导入：选择文件后回调 onImportDashboard，且可重复选择同一文件", () => {
+    const props = { ...baseProps };
+    render(<ChatSidebar {...props} />);
+    switchToDashboards();
+
+    const input = screen.getByLabelText("导入看板快照文件");
+    const file = new File([JSON.stringify({ dsl: "root = Root([])" })], "a.openui.json", {
+      type: "application/json",
+    });
+    fireEvent.change(input, { target: { files: [file] } });
+    expect(props.onImportDashboard).toHaveBeenCalledWith(file);
+    // value 被清空：同一文件可再次触发
+    expect(input).toHaveValue("");
+    fireEvent.change(input, { target: { files: [file] } });
+    expect(props.onImportDashboard).toHaveBeenCalledTimes(2);
   });
 });

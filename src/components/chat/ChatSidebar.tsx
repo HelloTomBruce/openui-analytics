@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import {
   BarChart3,
   Plus,
@@ -19,6 +19,8 @@ import {
   Edit3,
   Check,
   Star,
+  Download,
+  Upload,
 } from "lucide-react";
 import type { ChatSession } from "@/lib/sessionStorage";
 // 仅取类型（编译期擦除）
@@ -41,6 +43,10 @@ interface ChatSidebarProps {
   onReanalyzeDashboard: (prompt?: string) => void;
   onRenameDashboard: (id: string, title: string) => void;
   onDeleteDashboard: (id: string) => void;
+  /** 导出快照：父层拉取完整记录后下载 .openui.json */
+  onExportDashboard: (id: string) => void;
+  /** 导入快照：父层负责解析校验与落库（origin 置空） */
+  onImportDashboard: (file: File) => void;
   onCreateNewChat: () => void;
   onSelectSession: (sessionId: string) => void;
   onStartRename: (e: React.MouseEvent, session: ChatSession) => void;
@@ -68,6 +74,8 @@ export function ChatSidebar({
   onReanalyzeDashboard,
   onRenameDashboard,
   onDeleteDashboard,
+  onExportDashboard,
+  onImportDashboard,
   onCreateNewChat,
   onSelectSession,
   onStartRename,
@@ -85,6 +93,8 @@ export function ChatSidebar({
     "history" | "dashboards" | "presets"
   >("history");
   const [sessionSearch, setSessionSearch] = useState("");
+  // 快照导入：隐藏 file input（选择后清空 value，允许重复导入同一文件）
+  const importFileRef = useRef<HTMLInputElement>(null);
 
   // 过滤后的会话列表
   const filteredSessions = useMemo(() => {
@@ -212,8 +222,31 @@ export function ChatSidebar({
       {/* 看板收藏库视图 */}
       {sidebarTab === "dashboards" && (
         <div className="flex-1 overflow-y-auto px-3 py-2 space-y-1">
-          <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider px-1 pb-1">
-            收藏的看板（服务端存储，跨浏览器可用）
+          <div className="flex items-center justify-between gap-2 px-1 pb-1">
+            <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider truncate">
+              收藏的看板（服务端存储）
+            </div>
+            <button
+              onClick={() => importFileRef.current?.click()}
+              aria-label="导入看板快照"
+              title="导入 .openui.json 快照文件"
+              className="shrink-0 flex items-center gap-1 text-[11px] text-slate-500 hover:text-blue-600 dark:hover:text-blue-400 px-1.5 py-1 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-950/50 transition-colors"
+            >
+              <Upload className="w-3.5 h-3.5" />
+              <span>导入</span>
+            </button>
+            <input
+              ref={importFileRef}
+              type="file"
+              accept=".json,application/json"
+              aria-label="导入看板快照文件"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) onImportDashboard(file);
+                e.target.value = "";
+              }}
+            />
           </div>
           {dashboards.length === 0 ? (
             <div className="text-center py-10 px-3 text-xs text-slate-400 leading-relaxed">
@@ -231,6 +264,7 @@ export function ChatSidebar({
                 onReanalyze={onReanalyzeDashboard}
                 onRename={onRenameDashboard}
                 onDelete={onDeleteDashboard}
+                onExport={onExportDashboard}
               />
             ))
           )}
@@ -298,19 +332,21 @@ export function ChatSidebar({
   );
 }
 
-/** 看板收藏列表项：查看 / 重新分析 / 行内重命名 / 删除（行内二次确认） */
+/** 看板收藏列表项：查看 / 重新分析 / 导出快照 / 行内重命名 / 删除（行内二次确认） */
 function DashboardListItem({
   dashboard,
   onPreview,
   onReanalyze,
   onRename,
   onDelete,
+  onExport,
 }: {
   dashboard: DashboardSummary;
   onPreview: (id: string) => void;
   onReanalyze: (prompt?: string) => void;
   onRename: (id: string, title: string) => void;
   onDelete: (id: string) => void;
+  onExport: (id: string) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(dashboard.title);
@@ -392,6 +428,14 @@ function DashboardListItem({
             className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/50 disabled:opacity-30 disabled:pointer-events-none"
           >
             <RefreshCw className="w-3.5 h-3.5" />
+          </button>
+          <button
+            onClick={() => onExport(dashboard.id)}
+            aria-label={`导出看板 ${dashboard.title}`}
+            title="导出 .openui.json 快照"
+            className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/50"
+          >
+            <Download className="w-3.5 h-3.5" />
           </button>
           <button
             onClick={() => {

@@ -18,6 +18,12 @@ vi.mock("@/components/OpenUIRenderer", () => ({
   ),
 }));
 
+vi.mock("@/lib/toast", () => ({ toast: vi.fn() }));
+
+vi.mock("@/lib/dashboardSnapshot", () => ({
+  downloadDashboardSnapshot: vi.fn(),
+}));
+
 const RECORD: DashboardRecord = {
   id: "dash_ab12cd34",
   title: "Bug 收敛漏斗",
@@ -101,5 +107,43 @@ describe("DashboardPreviewModal 只读预览", () => {
 
     const { container } = render(<DashboardPreviewModal {...props} dashboard={null} />);
     expect(container.firstChild).toBeNull();
+  });
+
+  it("导出快照：调用下载工具并成功 toast", async () => {
+    const { downloadDashboardSnapshot } = await import("@/lib/dashboardSnapshot");
+    vi.mocked(downloadDashboardSnapshot).mockResolvedValueOnce(undefined);
+    renderModal();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "导出快照" }));
+    });
+    expect(downloadDashboardSnapshot).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "dash_ab12cd34" })
+    );
+    const { toast } = await import("@/lib/toast");
+    expect(toast).toHaveBeenCalledWith("已导出快照", "success");
+  });
+
+  it("复制 DSL：写剪贴板并成功 toast；剪贴板失败走错误 toast", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText },
+      configurable: true,
+    });
+    renderModal();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "复制 DSL" }));
+    });
+    expect(writeText).toHaveBeenCalledWith("root = Root([funnel])");
+    const { toast } = await import("@/lib/toast");
+    expect(toast).toHaveBeenCalledWith("已复制 DSL", "success");
+
+    // 失败路径
+    writeText.mockRejectedValueOnce(new Error("denied"));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "复制 DSL" }));
+    });
+    expect(toast).toHaveBeenCalledWith("复制失败", "error");
   });
 });

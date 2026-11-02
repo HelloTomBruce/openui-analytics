@@ -11,6 +11,10 @@ import { useDashboards, type FavoriteDashboardInput } from "@/hooks/useDashboard
 import { DashboardPreviewModal } from "@/components/chat/DashboardPreviewModal";
 // 仅取类型（编译期擦除）
 import type { DashboardRecord } from "@/lib/dashboardStore";
+import {
+  downloadDashboardSnapshot,
+  parseDashboardSnapshot,
+} from "@/lib/dashboardSnapshot";
 import { ChatSidebar } from "@/components/chat/ChatSidebar";
 import { MessageList } from "@/components/chat/MessageList";
 import { ChatInput } from "@/components/chat/ChatInput";
@@ -276,6 +280,47 @@ export default function ChatDashboard() {
     [removeDashboard]
   );
 
+  // 导出快照：拉完整记录（含 dsl）→ 下载 <title>.openui.json
+  const handleExportDashboard = useCallback(
+    async (id: string) => {
+      const record = await getDashboard(id);
+      if (!record) {
+        toast("看板不存在或已删除", "error");
+        return;
+      }
+      try {
+        await downloadDashboardSnapshot(record);
+        toast("已导出快照", "success");
+      } catch {
+        toast("导出失败", "error");
+      }
+    },
+    [getDashboard]
+  );
+
+  // 导入快照：客户端解析校验（JSON 可解析 + dsl 非空）→ 落库（origin 置空，视为手动导入）
+  const handleImportDashboard = useCallback(
+    async (file: File) => {
+      const text = await file.text().catch(() => null);
+      if (text === null) {
+        toast("读取文件失败", "error");
+        return;
+      }
+      const verdict = parseDashboardSnapshot(text);
+      if (!verdict.ok) {
+        toast(verdict.error, "error");
+        return;
+      }
+      const res = await favoriteDashboard(verdict.value);
+      if (res.ok) {
+        toast("已导入看板库", "success");
+      } else {
+        toast(res.error || "导入失败", "error");
+      }
+    },
+    [favoriteDashboard]
+  );
+
   const handleDevToolsAction = useCallback((msg: string) => {
     toast(`触发 Action: ${msg}`, "info");
   }, []);
@@ -312,6 +357,8 @@ export default function ChatDashboard() {
         onReanalyzeDashboard={handleReanalyzeDashboard}
         onRenameDashboard={handleRenameDashboard}
         onDeleteDashboard={handleDeleteDashboard}
+        onExportDashboard={handleExportDashboard}
+        onImportDashboard={handleImportDashboard}
         onCreateNewChat={handleCreateNewChat}
         onSelectSession={handleSelectSession}
         onStartRename={handleStartRename}

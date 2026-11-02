@@ -1,10 +1,12 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { X, RefreshCw, Edit3, Trash2, Check, Star } from "lucide-react";
+import { X, RefreshCw, Edit3, Trash2, Check, Star, Download, Copy } from "lucide-react";
 import { OpenUIRenderer } from "@/components/OpenUIRenderer";
 // 仅取类型（编译期擦除）
 import type { DashboardRecord } from "@/lib/dashboardStore";
+import { toast } from "@/lib/toast";
+import { downloadDashboardSnapshot } from "@/lib/dashboardSnapshot";
 import { formatSessionTime } from "./SessionListItem";
 
 interface DashboardPreviewModalProps {
@@ -67,6 +69,26 @@ export function DashboardPreviewModal({
     const trimmed = draft.trim();
     if (trimmed && trimmed !== dashboard.title) onRename(dashboard.id, trimmed);
     setEditing(false);
+  };
+
+  // 导出快照：下载 <title>.openui.json（记录完整 JSON）
+  const handleExportSnapshot = async () => {
+    try {
+      await downloadDashboardSnapshot(dashboard);
+      toast("已导出快照", "success");
+    } catch {
+      toast("导出失败", "error");
+    }
+  };
+
+  // 复制 DSL：剪贴板（可粘贴到 DevTools 沙盒预览）
+  const handleCopyDsl = async () => {
+    try {
+      await navigator.clipboard.writeText(dashboard.dsl);
+      toast("已复制 DSL", "success");
+    } catch {
+      toast("复制失败", "error");
+    }
   };
 
   return (
@@ -149,6 +171,22 @@ export function DashboardPreviewModal({
             >
               <RefreshCw className="w-3.5 h-3.5" />
               <span>重新分析</span>
+            </button>
+            <button
+              onClick={handleExportSnapshot}
+              aria-label="导出快照"
+              title="下载 .openui.json 快照文件（可导入分享）"
+              className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/50 transition-colors"
+            >
+              <Download className="w-4 h-4" />
+            </button>
+            <button
+              onClick={handleCopyDsl}
+              aria-label="复制 DSL"
+              title="复制 OpenUI DSL 到剪贴板（可粘贴到 DevTools 沙盒）"
+              className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/50 transition-colors"
+            >
+              <Copy className="w-4 h-4" />
             </button>
             {confirmDelete ? (
               <button
