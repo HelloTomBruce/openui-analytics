@@ -21,7 +21,7 @@ import {
   type SchemaCard,
   type SchemaProbe,
 } from "./schema/card";
-import { readSchemaCard, writeSchemaCard } from "./schema/store";
+import { createSchemaCardLifecycle } from "./schema/cardLifecycle";
 import {
   loadConfigFile,
   writeConfigFile,
@@ -359,51 +359,6 @@ export function createDatasourceManager(opts: {
    * 并发上传会互相抹除进行中构建并竞态交换，必须排队。
    */
   const ingestChains = new Map<string, Promise<unknown>>();
-  /** Schema Card 标脏集合：配置变更/执行期列缺失错误置位，后台重建后清除 */
-  const cardDirty = new Set<string>();
-  /**
-   * 建卡状态机：ok（有卡且新鲜）/ failed（最近一次构建失败）。
-   * failed 状态下 tools() 不再自动重试（防失败洪水），仅新的标脏事件
-   * （配置变更/列缺失/重灌/手动刷新）清除 failed 并重新触发。
-   */
-  const cardBuildState = new Map<string, "ok" | "failed">();
-  /** 按源 id 的建卡串行链：并发触发（tools 装配 + 错误标脏 + 手动刷新）排队合并 */
-  const cardChains = new Map<string, Promise<void>>();
-
-  /** 标脏并触发后台重建（配置变更/列缺失/重灌共用的唯一入口） */
-  const invalidateCard = (source: DynamicSourceConfig): void => {
-    cardDirty.add(source.id);
-    cardBuildState.delete(source.id); // 新的标脏事件允许失败重试
-    scheduleCardBuild(source);
-  };
-
-  /**
-   * 结构卡后台重建（fire-and-forget 安全包装）：
-   * 同源并发生成合并到串行链；失败标记 failed 并不再自动重试（直到新的标脏事件）。
-   */
-  const scheduleCardBuild = (source: DynamicSourceConfig): void => {
-    const prev = cardChains.get(source.id) ?? Promise.resolve();
-    const task = prev
-      .catch(() => {})
-      .then(async () => {
-        try {
-          const card = await buildCardForSource(source);
-          await writeSchemaCard(schemaCardsDir, card);
-          cardDirty.delete(source.id);
-          cardBuildState.set(source.id, "ok");
-        } catch (err) {
-          cardDirty.delete(source.id);
-          cardBuildState.set(source.id, "failed");
-          console.warn(
-            `[schema-card] 重建失败（${source.id}）:`,
-            err instanceof Error ? err.message : err
-          );
-        }
-      });
-    cardChains.set(source.id, task);
-    // 吞掉 rejection：调用方（tools/错误钩子）不等待
-    task.catch(() => {});
-  };
 
   /**
    * 构建单源结构卡：db/file 走表画像采集；http/stdio 仅记工具摘要。
@@ -452,6 +407,13 @@ export function createDatasourceManager(opts: {
     }
   };
 
+  // Schema Card 生命周期（标脏/熔断/串行链/drop 清理）内聚在 cardLifecycle 模块，
+  // manager 只注入「怎么构建」（连接装配知识属 manager）
+  const cardLifecycle = createSchemaCardLifecycle({
+    cardsDir: schemaCardsDir,
+    buildCard: buildCardForSource,
+  });
+
   /** MCP 工具 JSON 结果通道：list/describe/execute_sql 的 text JSON 统一解析 */
   const callJson = async (
     connection: McpConnection,
@@ -480,9 +442,8 @@ export function createDatasourceManager(opts: {
 
     if (cached) {
       connCache.delete(source.id);
-      // 配置变更 → 结构卡标脏（缓存失效单通道：与连接缓存同钩子）
-      cardDirty.add(source.id);
-      cardBuildState.delete(source.id); // 允许失败重试
+      // 配置变更 → 标脏（重建在新连接建立后触发，不抢查询连接时序）
+      cardLifecycle.markDirty(source);
       try {
         await cached.connection.close();
       } catch {
@@ -501,7 +462,7 @@ export function createDatasourceManager(opts: {
     const entry: ConnCacheEntry = { key, connection };
     connCache.set(source.id, entry);
     // 配置变更后的重建：异步进行，不阻塞连接返回
-    if (cardDirty.has(source.id)) scheduleCardBuild(source);
+    cardLifecycle.pumpIfDirty(source);
     return entry;
   };
 
@@ -522,6 +483,8 @@ export function createDatasourceManager(opts: {
       const next = deleteSource(readConfig(), id);
       writeConfigFile(next, configPath);
       syncConfig(next);
+      // 源删除联动：清结构卡内存状态与落盘文件（防 id 复用读到旧卡/磁盘残留）
+      cardLifecycle.drop(id);
       return next;
     },
     get(id) {
@@ -533,15 +496,8 @@ export function createDatasourceManager(opts: {
     connect: (s) => getOrConnectEntry(s).then((e) => e.connection),
     async tools(source) {
       const entry = await getOrConnectEntry(source);
-      // 结构卡惰性生成：无卡且未失败过时后台建一次；已标脏（新失效事件）时重建。
-      // failed 状态不自动重试——防止不可用源每次装配都触发失败洪水。
-      void readSchemaCard(schemaCardsDir, source.id).then((card) => {
-        const attempted = cardBuildState.has(source.id);
-        const dirty = cardDirty.has(source.id);
-        if (dirty || (card === null && !attempted)) {
-          scheduleCardBuild(source);
-        }
-      });
+      // 结构卡惰性生成：无卡且未失败过时后台建一次；已标脏时重建（熔断在生命周期模块）
+      cardLifecycle.ensure(source);
       if (entry.bindings) return entry.bindings;
       const connection = entry.connection;
       const mcpTools = await connection.listTools();
@@ -560,8 +516,8 @@ export function createDatasourceManager(opts: {
             // 执行期结构漂移信号（列不存在等）→ 标脏 + 后台重建；
             // 不做请求内重试，LLM 下一次调用自然读到新卡
             const message = err instanceof Error ? err.message : String(err);
-            if (SCHEMA_MISS_RE.test(message) && !cardDirty.has(source.id)) {
-              invalidateCard(source);
+            if (SCHEMA_MISS_RE.test(message)) {
+              cardLifecycle.invalidate(source);
             }
             throw err;
           }
@@ -667,7 +623,7 @@ export function createDatasourceManager(opts: {
         }
         const manifest = await ingestSourceFiles(filesDir, id, uploads);
         // 重灌 = 表结构可能变化：标脏并后台重建结构卡
-        invalidateCard(source);
+        cardLifecycle.invalidate(source);
         return manifest;
       });
       ingestChains.set(id, task);
@@ -684,27 +640,12 @@ export function createDatasourceManager(opts: {
       return removeSourceFiles(filesDir, id);
     },
     async getSchemaCard(id) {
-      const card = await readSchemaCard(schemaCardsDir, id);
-      if (!card) return null;
-      return { card, stale: cardDirty.has(id) };
+      return cardLifecycle.get(id);
     },
     refreshSchemaCard(id) {
       const source = readConfig().sources.find((s) => s.id === id);
       if (!source) return Promise.reject(new Error(`数据源不存在: ${id}`));
-      cardDirty.add(id);
-      cardBuildState.delete(id); // 手动刷新 = 明确的重试授权
-      // 与后台串行链合并：手动刷新同样排队，返回完成 promise 供测试/调用方等待
-      const prev = cardChains.get(id) ?? Promise.resolve();
-      const task = prev
-        .catch(() => {})
-        .then(async () => {
-          const card = await buildCardForSource(source);
-          await writeSchemaCard(schemaCardsDir, card);
-          cardDirty.delete(id);
-          cardBuildState.set(id, "ok");
-        });
-      cardChains.set(id, task);
-      return task;
+      return cardLifecycle.refresh(source);
     },
   };
 }

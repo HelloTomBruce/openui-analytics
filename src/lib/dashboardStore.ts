@@ -290,6 +290,33 @@ export function createDashboardStore(opts: { dir: string }): DashboardStore {
     );
   }
 
+  /**
+   * origin.messageId → dashboard id 内存索引：upsert 覆盖判定的 O(1) 通道
+   * （替代每次全目录扫描）。首次使用惰性构建；写路径同步维护。
+   * 假设：所有写经本实例（应用单例），进程外改文件后重启即可自愈。
+   */
+  let messageIdIndex: Map<string, string> | null = null;
+  const indexByMessageId = async (): Promise<Map<string, string>> => {
+    if (messageIdIndex === null) {
+      messageIdIndex = new Map();
+      for (const r of await readAll()) {
+        if (r.origin?.messageId) messageIdIndex.set(r.origin.messageId, r.id);
+      }
+    }
+    return messageIdIndex;
+  };
+  const reindexOrigin = (
+    prev: DashboardOrigin | undefined,
+    next: DashboardOrigin | undefined,
+    id: string
+  ): void => {
+    if (messageIdIndex === null) return; // 索引未构建无需维护（下次构建即准确）
+    if (prev?.messageId && prev.messageId !== next?.messageId) {
+      messageIdIndex.delete(prev.messageId);
+    }
+    if (next?.messageId) messageIdIndex.set(next.messageId, id);
+  };
+
   return {
     async list() {
       const records = await readAll();
@@ -313,12 +340,13 @@ export function createDashboardStore(opts: { dir: string }): DashboardStore {
       }
 
       const now = Date.now();
-      const existing = fields.origin?.messageId
-        ? (
-            await readAll()
-          ).find((r) => r.origin?.messageId === fields.origin?.messageId) ??
-          null
-        : null;
+      let existing: DashboardRecord | null = null;
+      const messageId = fields.origin?.messageId;
+      if (messageId) {
+        const index = await indexByMessageId();
+        const hitId = index.get(messageId);
+        existing = hitId ? ((await readRecord(`${hitId}.json`)) ?? null) : null;
+      }
 
       if (existing) {
         // 覆盖更新：保 id/createdAt 与（可能已重命名的）标题；显式字段覆盖
@@ -333,6 +361,7 @@ export function createDashboardStore(opts: { dir: string }): DashboardStore {
           ...(fields.origin !== undefined ? { origin: fields.origin } : {}),
           updatedAt: now,
         };
+        reindexOrigin(existing.origin, record.origin, record.id);
         await writeRecord(record);
         return { ok: true, record };
       }
@@ -352,6 +381,7 @@ export function createDashboardStore(opts: { dir: string }): DashboardStore {
         createdAt: now,
         updatedAt: now,
       };
+      reindexOrigin(undefined, record.origin, record.id);
       await writeRecord(record);
       return { ok: true, record };
     },
@@ -388,14 +418,19 @@ export function createDashboardStore(opts: { dir: string }): DashboardStore {
         ...(fields.origin !== undefined ? { origin: fields.origin } : {}),
         updatedAt: Date.now(),
       };
+      reindexOrigin(existing.origin, record.origin, record.id);
       await writeRecord(record);
       return { ok: true, record };
     },
 
     async remove(id) {
       if (!isValidId(id)) return false;
+      const record = await readRecord(`${id}.json`);
       try {
         await fs.unlink(fileFor(id));
+        if (record?.origin?.messageId && messageIdIndex) {
+          messageIdIndex.delete(record.origin.messageId);
+        }
         return true;
       } catch {
         return false;

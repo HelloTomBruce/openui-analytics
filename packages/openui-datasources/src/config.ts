@@ -205,6 +205,9 @@ export function validateSourceConfig(input: unknown): ValidateResult {
       const p = connectionString.replace(/^sqlite:/, "");
       if (!p || /\s/.test(p)) {
         errors.push("sqlite connectionString 非法（需为数据库文件路径，可带 sqlite: 前缀）");
+      } else if (p === ":memory:" || p.startsWith("file::memory:")) {
+        // 内存库对持久分析源无意义：连接关闭即丢数据，且结构卡/只读语义均不成立
+        errors.push("sqlite 不支持内存库（:memory:），请提供持久化的数据库文件路径");
       }
     } else if (!CONN_PATTERN.test(connectionString)) {
       errors.push("connectionString 连接串非法（需 URL 形式且不能为空）");

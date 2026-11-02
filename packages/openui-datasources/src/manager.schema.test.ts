@@ -156,3 +156,21 @@ describe("manager: Schema Card 覆盖新文件格式", () => {
     expect(region?.topValues).toContain("华东");
   });
 });
+
+describe("manager: 源删除联动清理结构卡（R1）", () => {
+  it("delete 源后：落盘卡文件删除、getSchemaCard 为 null、同 id 重建源不读旧卡", async () => {
+    await manager.ingestFiles("csv1", [{ name: "sales.csv", data: CSV_V1 }]);
+    await manager.refreshSchemaCard("csv1");
+    expect(await manager.getSchemaCard("csv1")).not.toBeNull();
+    const cardFile = path.join(schemaCardsDir, "csv1.json");
+    expect(fs.existsSync(cardFile)).toBe(true);
+
+    manager.delete("csv1");
+
+    // 落盘卡与配置同步清理
+    await new Promise((r) => setTimeout(r, 50)); // drop 的文件删除是异步 fire-and-forget
+    expect(fs.existsSync(cardFile)).toBe(false);
+    expect(await manager.getSchemaCard("csv1")).toBeNull();
+    expect(manager.get("csv1")).toBeUndefined();
+  });
+});

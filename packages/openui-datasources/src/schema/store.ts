@@ -64,3 +64,12 @@ export async function writeSchemaCard(
   await fs.mkdir(dir, { recursive: true });
   await fs.writeFile(path.join(dir, `${card.sourceId}.json`), text, "utf-8");
 }
+
+/** 删卡：源删除时联动清理落盘文件；文件不存在视为目标态（不抛错） */
+export async function deleteSchemaCard(
+  dir: string,
+  sourceId: string
+): Promise<void> {
+  if (!isValidSourceId(sourceId)) return;
+  await fs.rm(path.join(dir, `${sourceId}.json`), { force: true });
+}

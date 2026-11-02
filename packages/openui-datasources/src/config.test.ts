@@ -227,3 +227,14 @@ describe("db 源校验：sqlite / clickhouse", () => {
     fs.rmSync(dir, { recursive: true, force: true });
   });
 });
+
+describe("sqlite :memory: 拒绝（C3）", () => {
+  it(":memory: 与 file::memory: 形态明确报错", () => {
+    const r1 = validateSourceConfig({ id: "db1", name: "N", kind: "db", dbType: "sqlite", connectionString: ":memory:" });
+    expect(r1.ok).toBe(false);
+    if (!r1.ok) expect(r1.errors.join()).toContain("内存库");
+
+    const r2 = validateSourceConfig({ id: "db1", name: "N", kind: "db", dbType: "sqlite", connectionString: "file::memory:?cache=shared" });
+    expect(r2.ok).toBe(false);
+  });
+});
