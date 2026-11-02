@@ -18,6 +18,7 @@
     "@openui-analytics/components": "workspace:*",
     "@openui-analytics/datasources": "workspace:*",
     "@openui-analytics/llm": "workspace:*",
+    "@openui-analytics/methodology": "workspace:*",
     "@openuidev/devtools": "^0.2.2",
     "@openuidev/react-lang": "^0.3.1",
     "clsx": "^2.1.1",
