@@ -103,7 +103,9 @@ describe("prompt 示例与组件库 schema 一致性", () => {
     const first = Array.isArray(children) ? children[0] : children;
     expect((first as { typeName?: string })?.typeName).toBe("PlanReviewCard");
     const cardProps = (first as { props?: Record<string, unknown> })?.props ?? {};
-    expect(cardProps.title).toBe("渠道 CAC 分析思路确认");
+    expect(String(cardProps.title)).toContain("渠道 CAC 分析思路确认");
+    // few-shot 体现方法命名（方法论选法引导）
+    expect(String(cardProps.title)).toMatch(/方法[：:].*(pareto|trend)/);
     expect(Array.isArray(cardProps.steps)).toBe(true);
     expect(Array.isArray(cardProps.clarifications)).toBe(true);
     expect(Array.isArray(cardProps.sources)).toBe(true);
@@ -112,5 +114,25 @@ describe("prompt 示例与组件库 schema 一致性", () => {
     for (const c of clarifications) {
       expect(Array.isArray(c.options) || typeof c.default === "string").toBe(true);
     }
+  });
+});
+
+describe("内置方法卡 ↔ 组件库一致性（methodology 三级扩展守护）", () => {
+  it("全部内置卡的 chartPairing 组件存在于 serverLibrary", async () => {
+    const { builtinMethodCards, validateCards } = await import(
+      "@openui-analytics/methodology"
+    );
+    // 组件名全集直接取自 serverLibrary schema（新增/改名组件时此处同步）
+    const schema = serverLibrary.toJSONSchema() as { properties?: Record<string, unknown> };
+    const componentNames = Object.keys(schema.properties ?? {});
+    expect(componentNames.length).toBeGreaterThanOrEqual(19);
+
+    const { valid, skipped } = validateCards(builtinMethodCards, componentNames);
+    expect(skipped).toEqual([]);
+    expect(valid).toHaveLength(builtinMethodCards.length);
+  });
+
+  it("planExample 体现方法命名（few-shot 引导选法）", () => {
+    expect(planExample).toMatch(/方法[：:].*pareto/);
   });
 });

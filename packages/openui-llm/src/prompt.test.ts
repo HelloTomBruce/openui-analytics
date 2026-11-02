@@ -119,3 +119,52 @@ describe("结构卡预算常量守护（防回归快照）", () => {
     `);
   });
 });
+
+describe("方法论注入（三模式）", () => {
+  const INDEX = "## Analysis Method Index (pick by the question's intent):\n- trend: 趋势与同比环比 — 指标随时间如何变化";
+  const DETAILS = "### Method pareto · 构成与帕累托\nCharts: AnalyticsChart + MetricGrid";
+
+  it("direct / plan 携带方法索引与选法引导；execute 携带详情与遵循指令", () => {
+    const direct = getOpenUISystemPrompt(ACTIVE, undefined, INDEX);
+    expect(direct).toContain("Analysis Method Index");
+    expect(direct).toContain("NAME them in the dashboard title");
+
+    const plan = getOpenUIPlanPrompt(ACTIVE, undefined, INDEX);
+    expect(plan).toContain("Analysis Method Index");
+    expect(plan).toContain("Method Selection");
+    expect(plan).toContain("1-2 methods");
+
+    const exec = getExecuteSystemPrompt(ACTIVE, undefined, DETAILS);
+    expect(exec).toContain("### Method pareto");
+    expect(exec).toContain("follow their detailed guidance strictly");
+    // execute 不重复注入索引（按需详情替代全量索引）
+    expect(exec).not.toContain("Analysis Method Index");
+  });
+
+  it("缺省不注入（向后兼容）", () => {
+    expect(getOpenUISystemPrompt(ACTIVE)).not.toContain("Analysis Method Index");
+    expect(getOpenUIPlanPrompt(ACTIVE)).not.toContain("Method Selection");
+    expect(getExecuteSystemPrompt(ACTIVE)).not.toContain("Method pareto");
+  });
+
+  it("索引预算常量契约快照（methodology 包）", async () => {
+    const {
+      INDEX_BUDGET_BYTES,
+      DETAIL_BUDGET_BYTES,
+      renderMethodIndex,
+      builtinMethodCards,
+    } = await import("@openui-analytics/methodology");
+    expect({
+      index: INDEX_BUDGET_BYTES,
+      detail: DETAIL_BUDGET_BYTES,
+    }).toMatchInlineSnapshot(`
+      {
+        "detail": 600,
+        "index": 1024,
+      }
+    `);
+    // 内置 10 卡索引实渲染在预算内
+    const text = renderMethodIndex(builtinMethodCards);
+    expect(Buffer.byteLength(text, "utf-8")).toBeLessThanOrEqual(INDEX_BUDGET_BYTES);
+  });
+});

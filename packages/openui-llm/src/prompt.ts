@@ -59,7 +59,7 @@ verdict = InsightBox("tip", "对比结论", "TikTok CAC 更低且增速更快（
  * 与其他示例一样受 promptExamples.test.ts 全量解析校验守护。
  */
 export const planExample = `root = Root([plan])
-plan = PlanReviewCard("渠道 CAC 分析思路确认", "各渠道获客成本对比与预算优化建议", ["postgres: marketing.leads / marketing.deals", "采样验证: leads.status 枚举值"], [{"title":"拉取近 90 天各渠道线索与成交明细","detail":"按渠道聚合花费/线索/成交数","chart":"DataTable"},{"title":"计算各渠道 CAC、转化率与环比变化","chart":"MetricCard + AnalyticsChart(bar)"},{"title":"对比各渠道效率并给出预算再分配建议","chart":"ComparisonLayout + ActionPlanCard + ReactiveSimulator"}], [{"question":"CAC 口径是否包含人力成本？","options":["仅投放花费","投放+人力成本"],"default":"仅投放花费"},{"question":"分析周期以哪个为准？","options":["近 90 天","本季度"],"default":"近 90 天"}], "按此思路开始分析")`;
+plan = PlanReviewCard("渠道 CAC 分析思路确认（方法：pareto + ranking）", "各渠道获客成本对比与预算优化建议", ["postgres: marketing.leads / marketing.deals", "采样验证: leads.status 枚举值"], [{"title":"拉取近 90 天各渠道线索与成交明细","detail":"方法 ranking：按渠道聚合花费/线索/成交数并排序","chart":"DataTable"},{"title":"计算各渠道 CAC、转化率与环比变化","chart":"MetricCard + AnalyticsChart(bar)"},{"title":"方法 pareto：定位贡献 80% 的头部渠道并给出预算再分配建议","chart":"ComparisonLayout + ActionPlanCard + ReactiveSimulator"}], [{"question":"CAC 口径是否包含人力成本？","options":["仅投放花费","投放+人力成本"],"default":"仅投放花费"},{"question":"分析周期以哪个为准？","options":["近 90 天","本季度"],"default":"近 90 天"}], "按此思路开始分析")`;
 
 function dataAccessSection(activeSources: ActiveSourceSummary[]): string {
   const lines: string[] = [];
@@ -94,14 +94,52 @@ ${schemaDigest}
 The cards above were generated from live schema inspection. Prefer them over calling list_tables/describe_table for tables/columns already documented; only probe when the card is missing the structure you need or a query error suggests the schema drifted.`;
 }
 
+/**
+ * 方法论索引段（direct/plan 常驻）：方法卡渲染文本由 @openui-analytics/methodology
+ * 的 renderMethodIndex 产出，本包只负责拼接与引导语。缺省（无库/未注入）零输出。
+ */
+function methodIndexSection(methodIndex?: string): string {
+  if (!methodIndex) return "";
+  return `
+
+${methodIndex}
+
+Pick the most fitting method(s) from the index by the question's intent and NAME them in the dashboard title or insights so the analysis approach is visible.`;
+}
+
+/** plan 模式选法指令段：仅注入索引时出现（无索引时选法无从谈起） */
+function methodSelectionSection(methodIndex?: string): string {
+  if (!methodIndex) return "";
+  return `
+
+## Method Selection (from the index above):
+- Pick 1-2 methods that best fit the question's intent and NAME them in the plan: put the method id (e.g. "pareto", "trend") in the PlanReviewCard title or a step's detail, so the user can confirm or change the analytical approach along with the plan.
+- The execution round will receive the full guidance of the selected methods automatically.`;
+}
+
+/**
+ * 方法论详情段（execute 按需注入）：仅注入选中卡的完整指导
+ * （renderCardDetail 产出，预算由 methodology 包守护）。
+ */
+function methodDetailsSection(methodDetails?: string): string {
+  if (!methodDetails) return "";
+  return `
+
+${methodDetails}
+
+The user confirmed a plan referencing the method(s) above — follow their detailed guidance strictly when executing.`;
+}
+
 export function getOpenUISystemPrompt(
   activeSources: ActiveSourceSummary[],
-  schemaDigest?: string
+  schemaDigest?: string,
+  methodIndex?: string
 ): string {
   const preamble = `You are an expert Data Analyst & Engineering BI Assistant powered by OpenUI Generative UI and MCP (Model Context Protocol).
 
 ${dataAccessSection(activeSources)}
 ${schemaDigestSection(schemaDigest)}
+${methodIndexSection(methodIndex)}
 
 ## Cross-Source Joint Analysis (禅道 × GitLab):
 When a question involves BOTH project progress/quality (ZenTao) AND code activity (GitLab), e.g. "为什么这个迭代延期了" or "这个项目代码活跃度与 bug 趋势的关系":
@@ -171,12 +209,15 @@ You have a rich set of declarative components available:
  */
 export function getOpenUIPlanPrompt(
   activeSources: ActiveSourceSummary[],
-  schemaDigest?: string
+  schemaDigest?: string,
+  methodIndex?: string
 ): string {
   const preamble = `You are an expert Data Analyst doing REQUIREMENT SCOPING before any dashboard is built, powered by OpenUI Generative UI and MCP (Model Context Protocol).
 
 ${dataAccessSection(activeSources)}
 ${schemaDigestSection(schemaDigest)}
+${methodIndexSection(methodIndex)}
+${methodSelectionSection(methodIndex)}
 
 ## Planning Mode (CRITICAL - you are NOT producing the final dashboard in this round):
 The user just asked an analytical question. Your job:
@@ -222,10 +263,12 @@ The user just asked an analytical question. Your job:
  */
 export function getExecuteSystemPrompt(
   activeSources: ActiveSourceSummary[],
-  schemaDigest?: string
+  schemaDigest?: string,
+  methodDetails?: string
 ): string {
   const base = getOpenUISystemPrompt(activeSources, schemaDigest);
   return `${base}
+${methodDetailsSection(methodDetails)}
 
 ## Confirmed Plan Execution Mode:
 The conversation history contains an analysis plan (PlanReviewCard) the user has now confirmed, possibly with clarification answers.

@@ -343,3 +343,109 @@ describe("createAnalyzeHandler Schema Card 注入", () => {
     expect(streamText).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("createAnalyzeHandler 方法论注入", () => {
+  beforeEach(() => {
+    mockStreamOk();
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("direct 模式注入方法索引（含内置卡条目）", async () => {
+    const manager = await makeFakeManager();
+    const POST = createAnalyzeHandler({ datasources: manager });
+    await POST(makeRequest({ messages: [], apiKey: "k" }));
+    const sys = vi.mocked(streamText).mock.calls[0][0].system as string;
+    expect(sys).toContain("Analysis Method Index");
+    expect(sys).toContain("- trend: 趋势与同比环比");
+  });
+
+  it("execute 模式：从最近 assistant 消息（PlanReviewCard）提取方法 id 注入详情", async () => {
+    const manager = await makeFakeManager();
+    const POST = createAnalyzeHandler({ datasources: manager });
+    await POST(
+      makeRequest({
+        messages: [
+          { role: "user", content: "各渠道投放 ROI 怎么样" },
+          {
+            role: "assistant",
+            content:
+              '思路确认（方法：pareto + trend）\n```openui\nroot = Root([plan])\nplan = PlanReviewCard("投放 ROI 思路")\n```',
+          },
+          { role: "user", content: "按此思路开始分析" },
+        ],
+        apiKey: "k",
+        mode: "execute",
+      })
+    );
+    const sys = vi.mocked(streamText).mock.calls[0][0].system as string;
+    expect(sys).toContain("### Method pareto");
+    expect(sys).toContain("### Method trend");
+    expect(sys).toContain("follow their detailed guidance strictly");
+    // 按需详情：不注入全量索引
+    expect(sys).not.toContain("Analysis Method Index");
+  });
+
+  it("execute 未命中方法：回落无详情的执行约束", async () => {
+    const manager = await makeFakeManager();
+    const POST = createAnalyzeHandler({ datasources: manager });
+    await POST(
+      makeRequest({
+        messages: [
+          { role: "assistant", content: "一个没有方法命名的规划" },
+          { role: "user", content: "开始" },
+        ],
+        apiKey: "k",
+        mode: "execute",
+      })
+    );
+    const sys = vi.mocked(streamText).mock.calls[0][0].system as string;
+    expect(sys).toContain("Confirmed Plan Execution Mode");
+    expect(sys).not.toContain("### Method ");
+  });
+
+  it("methodology 注入自定义库：索引与 execute 详情来自注入卡", async () => {
+    const { createMethodLibrary, builtinMethodCards } = await import(
+      "@openui-analytics/methodology"
+    );
+    const custom = createMethodLibrary({
+      builtin: builtinMethodCards,
+      custom: [
+        {
+          id: "dora",
+          name: "DORA 效能分析",
+          when: "研发交付效能四指标",
+          steps: ["计算部署频率/变更前置时间/变更失败率/恢复时间", "对标基准并定位短板"],
+          chartPairing: ["AnalyticsChart", "MetricCard"],
+          executeGuidance: "Compute the four DORA metrics and benchmark them; highlight the weakest dimension.",
+        },
+      ],
+    });
+    const manager = await makeFakeManager();
+    const POST = createAnalyzeHandler({
+      datasources: manager,
+      methodology: custom.library,
+    });
+
+    await POST(makeRequest({ messages: [], apiKey: "k" }));
+    let sys = vi.mocked(streamText).mock.calls[0][0].system as string;
+    // 索引注入生效（11 卡超 1KB 预算截断——断言头部条目而非尾部 dora）
+    expect(sys).toContain("Analysis Method Index");
+    expect(sys).toContain("- trend: 趋势与同比环比");
+
+    await POST(
+      makeRequest({
+        messages: [
+          { role: "assistant", content: "规划（方法 dora）" },
+          { role: "user", content: "开始" },
+        ],
+        apiKey: "k",
+        mode: "execute",
+      })
+    );
+    sys = vi.mocked(streamText).mock.calls[1][0].system as string;
+    expect(sys).toContain("### Method dora · DORA 效能分析");
+  });
+});

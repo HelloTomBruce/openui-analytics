@@ -8,6 +8,13 @@ import {
   type DatasourceManager,
 } from "@openui-analytics/datasources";
 import { toAiTools } from "@openui-analytics/datasources/adapters/ai";
+import {
+  builtinMethodCards,
+  createMethodLibrary,
+  renderMethodIndex,
+  renderCardDetail,
+  type MethodLibrary,
+} from "@openui-analytics/methodology";
 import { getOpenUISystemPrompt, getOpenUIPlanPrompt, getExecuteSystemPrompt } from "./prompt";
 import { getCrossSourceLinks } from "./crossSourceMap";
 
@@ -49,9 +56,44 @@ async function buildSchemaDigest(
   return sections.join("\n\n");
 }
 
+/**
+ * execute 模式方法提取：从消息历史**最近一条 assistant 消息**（即待执行的
+ * PlanReviewCard 规划）中匹配方法 id（词边界）或卡名（中文语境兜底），
+ * 命中卡按需注入详情（≤2 张，与 plan 阶段「选 1~2 个方法」契约一致）。
+ * 未命中返回 undefined（execute prompt 回落到无详情的增量约束）。
+ */
+export function buildMethodDetailsFromMessages(
+  library: MethodLibrary,
+  messages: unknown[]
+): string | undefined {
+  let lastAssistant: string | undefined;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i] as { role?: unknown; content?: unknown } | null;
+    if (!m || m.role !== "assistant") continue;
+    lastAssistant = typeof m.content === "string" ? m.content : undefined;
+    break;
+  }
+  if (!lastAssistant) return undefined;
+
+  const matched: string[] = [];
+  for (const card of library.cards) {
+    if (matched.length >= 2) break;
+    const idRe = new RegExp(`\\b${card.id}\\b`, "i");
+    if (idRe.test(lastAssistant) || lastAssistant.includes(card.name)) {
+      matched.push(renderCardDetail(card));
+    }
+  }
+  return matched.length > 0 ? matched.join("\n\n") : undefined;
+}
+
 export interface AnalyzeHandlerOptions {
   /** 应用持有的数据源单例（src/lib/datasources.ts），包不自建 */
   datasources: DatasourceManager;
+  /**
+   * 方法论库（可选注入）：缺省用内置 10 卡装配（内置卡由 promptExamples.test
+   * 的组件名一致性校验守护）；应用层可注入「内置 + 用户卡/业务包卡」合并库。
+   */
+  methodology?: MethodLibrary;
 }
 
 export interface AnalyzeRequestBody {
@@ -80,6 +122,12 @@ export interface AnalyzeRequestBody {
  */
 export function createAnalyzeHandler(opts: AnalyzeHandlerOptions) {
   const { datasources } = opts;
+
+  // 方法论库：注入或缺省内置；索引文本在工厂期渲染一次（库不变无需逐请求重算）
+  const methodLibrary: MethodLibrary =
+    opts.methodology ??
+    createMethodLibrary({ builtin: builtinMethodCards }).library;
+  const methodIndexText = renderMethodIndex(methodLibrary.cards);
 
   return async function POST(req: Request) {
     try {
@@ -183,15 +231,20 @@ export function createAnalyzeHandler(opts: AnalyzeHandlerOptions) {
           : s;
       });
 
-      // 按阶段分派系统提示词：plan → 规划变体（探查边界 + PlanReviewCard 契约）；
-      // execute → base + 按已确认思路执行的增量约束；direct → base 直出看板
+      // 按阶段分派系统提示词：plan → 规划变体（探查边界 + PlanReviewCard 契约 + 选法指令）；
+      // execute → base + 按已确认思路执行的增量约束 + 命中方法卡详情（按需注入）；
+      // direct → base 直出看板 + 方法索引（常驻）
       const schemaDigest = await buildSchemaDigest(datasources, summaries);
+      const methodDetails =
+        mode === "execute"
+          ? buildMethodDetailsFromMessages(methodLibrary, messages)
+          : undefined;
       const system =
         mode === "plan"
-          ? getOpenUIPlanPrompt(summaries, schemaDigest)
+          ? getOpenUIPlanPrompt(summaries, schemaDigest, methodIndexText)
           : mode === "execute"
-            ? getExecuteSystemPrompt(summaries, schemaDigest)
-            : getOpenUISystemPrompt(summaries, schemaDigest);
+            ? getExecuteSystemPrompt(summaries, schemaDigest, methodDetails)
+            : getOpenUISystemPrompt(summaries, schemaDigest, methodIndexText);
 
       const result = streamText({
         model: languageModel,
