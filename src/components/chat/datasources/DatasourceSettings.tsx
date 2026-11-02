@@ -332,7 +332,7 @@ export function DatasourceSettings() {
                     checked={form.kind === "file"}
                     onChange={() => setForm({ ...form, kind: "file" })}
                   />
-                  <span>文件（CSV/Excel）</span>
+                  <span>文件（CSV/Excel/Parquet/JSON）</span>
                 </label>
               </div>
             </div>
@@ -459,7 +459,7 @@ export function DatasourceSettings() {
               <Database className="w-3 h-3" />
               <span>
                 {form.mode === "create"
-                  ? "创建后在数据源列表中上传 CSV/Excel 文件（≤50MB），即可用自然语言查询"
+                  ? "创建后在数据源列表中上传 CSV/Excel/Parquet/JSON 文件（≤50MB），即可用自然语言查询"
                   : "文件在数据源列表的上传区管理；重新上传将完全覆盖现有表"}
               </span>
             </div>

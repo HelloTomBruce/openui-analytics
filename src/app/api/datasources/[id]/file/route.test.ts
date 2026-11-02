@@ -182,3 +182,55 @@ describe("GET /api/datasources/:id/file", () => {
     expect(res.status).toBe(404);
   });
 });
+
+describe("新格式内容嗅探（parquet/json/ndjson）", () => {
+  it("伪装 parquet（CSV 内容无 PAR1 魔数）→ 400", async () => {
+    vi.mocked(datasources.get).mockReturnValueOnce({ ...FILE_SOURCE });
+    const res = await POST(
+      uploadRequest("sales", [{ name: "fake.parquet", data: CSV }]),
+      makeContext("sales")
+    );
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toContain("PAR1");
+  });
+
+  it("二进制 json（含 NUL）→ 400；首字符非 [/{ → 400", async () => {
+    vi.mocked(datasources.get).mockReturnValue({ ...FILE_SOURCE });
+    const bin = new Uint8Array([0x7b, 0x00, 0x7d]);
+    const res1 = await POST(
+      uploadRequest("sales", [{ name: "bin.json", data: bin }]),
+      makeContext("sales")
+    );
+    expect(res1.status).toBe(400);
+
+    const txt = new TextEncoder().encode("hello world");
+    const res2 = await POST(
+      uploadRequest("sales", [{ name: "txt.json", data: txt }]),
+      makeContext("sales")
+    );
+    expect(res2.status).toBe(400);
+    expect((await res2.json()).error).toContain("[ 或 {");
+  });
+
+  it("合法 json 数组与 ndjson 通过嗅探进入灌库", async () => {
+    vi.mocked(datasources.get).mockReturnValue({ ...FILE_SOURCE });
+    vi.mocked(datasources.ingestFiles).mockResolvedValue({
+      files: [],
+      tables: [],
+      ingestedAt: "t",
+    });
+    const arr = new TextEncoder().encode('[{"a":1}]');
+    const res1 = await POST(
+      uploadRequest("sales", [{ name: "ok.json", data: arr }]),
+      makeContext("sales")
+    );
+    expect(res1.status).toBe(201);
+
+    const nd = new TextEncoder().encode('{"a":1}\n{"a":2}\n');
+    const res2 = await POST(
+      uploadRequest("sales", [{ name: "ok.ndjson", data: nd }]),
+      makeContext("sales")
+    );
+    expect(res2.status).toBe(201);
+  });
+});

@@ -445,7 +445,7 @@ describe("DatasourceSettings", () => {
 
     fireEvent.change(screen.getByLabelText(/ID/), { target: { value: "csv1" } });
     fireEvent.change(screen.getByLabelText(/名称/), { target: { value: "销售表" } });
-    fireEvent.click(screen.getByLabelText(/文件（CSV\/Excel）/));
+    fireEvent.click(screen.getByLabelText(/文件（CSV\/Excel\/Parquet\/JSON）/));
     // 文件类型不渲染连接字段
     expect(screen.queryByLabelText(/URL/)).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/连接串/)).not.toBeInTheDocument();

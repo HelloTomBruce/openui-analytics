@@ -62,7 +62,9 @@ describe("FileSourcePanel", () => {
     render(<FileSourcePanel sourceId="empty" />);
 
     expect(await screen.findByText("尚未上传文件")).toBeInTheDocument();
-    expect(screen.getByText(/上传 \.csv \/ \.xlsx（≤50MB）/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/上传 \.csv \/ \.xlsx \/ \.parquet \/ \.json（≤50MB）/)
+    ).toBeInTheDocument();
   });
 
   it("选择文件后 POST multipart 并刷新 manifest", async () => {

@@ -47,7 +47,9 @@ export async function POST(
     for (const file of files) {
       if (!isSupportedUpload(file.name)) {
         return Response.json(
-          { error: `不支持的文件类型: ${file.name}（仅 .csv / .xlsx）` },
+          {
+            error: `不支持的文件类型: ${file.name}（仅 .csv / .xlsx / .parquet / .json / .ndjson）`,
+          },
           { status: 400 }
         );
       }
@@ -94,12 +96,36 @@ export async function GET(
   return Response.json({ manifest });
 }
 
-/** 内容嗅探：xlsx 必须是 ZIP（PK 头），csv 必须是文本（前 8KB 无 NUL） */
+/** 内容嗅探：xlsx=ZIP 头（PK）、parquet=PAR1 魔数、json/ndjson=首个非空白字符 [/{ 且无 NUL、csv=文本无 NUL */
 function sniffContent(name: string, data: Buffer): string | null {
   const lower = name.toLowerCase();
   if (lower.endsWith(".xlsx")) {
     if (data.length < 4 || data[0] !== 0x50 || data[1] !== 0x4b) {
       return "内容不是合法的 xlsx（缺少 ZIP 文件头）";
+    }
+    return null;
+  }
+  if (lower.endsWith(".parquet")) {
+    // Parquet 魔数 PAR1（0x50 0x41 0x52 0x31）
+    if (
+      data.length < 4 ||
+      data[0] !== 0x50 ||
+      data[1] !== 0x41 ||
+      data[2] !== 0x52 ||
+      data[3] !== 0x31
+    ) {
+      return "内容不是合法的 parquet（缺少 PAR1 魔数）";
+    }
+    return null;
+  }
+  if (lower.endsWith(".json") || lower.endsWith(".ndjson")) {
+    const head = data.subarray(0, 8192);
+    if (head.includes(0)) {
+      return "内容不是合法 JSON 文本（检测到二进制字节）";
+    }
+    const first = head.toString("utf-8").trimStart().charAt(0);
+    if (first !== "[" && first !== "{") {
+      return "内容不是合法 JSON（首个非空白字符应为 [ 或 {）";
     }
     return null;
   }

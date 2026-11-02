@@ -4,13 +4,19 @@ import { DuckDBInstance } from "@duckdb/node-api";
 import ExcelJS from "exceljs";
 
 /**
- * 文件数据源落盘层：CSV/Excel → DuckDB 完全覆盖式灌库 + manifest 读写。
+ * 文件数据源落盘层：CSV/Excel/Parquet/JSON → DuckDB 完全覆盖式灌库 + manifest 读写。
  * 目录布局：<filesDir>/<sourceId>/raw/（原始文件）、analytics.duckdb、manifest.json。
  * 灌库采用「staging 目录构建 + 整体替换」：失败时旧数据原样保留。
  */
 
 export const FILE_SOURCE_MAX_BYTES = 50 * 1024 * 1024;
-export const FILE_SOURCE_EXTENSIONS = [".csv", ".xlsx"] as const;
+export const FILE_SOURCE_EXTENSIONS = [
+  ".csv",
+  ".xlsx",
+  ".parquet",
+  ".json",
+  ".ndjson",
+] as const;
 export const FILE_SOURCE_DB_FILENAME = "analytics.duckdb";
 
 export interface FileSourceUpload {
@@ -22,6 +28,8 @@ export interface FileTableInfo {
   table: string;
   fromFile: string;
   sheet?: string;
+  /** 源文件格式（xlsx 经临时 CSV 灌库，format 记原始格式） */
+  format?: "csv" | "xlsx" | "parquet" | "json" | "ndjson";
   rowCount: number;
   columns: { name: string; type: string }[];
 }
@@ -116,11 +124,16 @@ function csvCell(value: ExcelJS.CellValue): string {
   return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
+/** DuckDB 读取器：csv（含 excel 临时 CSV）/ parquet / json（json+ndjson 通吃） */
+type DuckDbReader = "csv" | "parquet" | "json";
+
 interface IngestTableSpec {
   table: string;
   fromFile: string;
   sheet?: string;
-  csvPath: string;
+  format: FileTableInfo["format"];
+  reader: DuckDbReader;
+  dataPath: string;
 }
 
 /**
@@ -163,7 +176,9 @@ export async function ingestSourceFiles(
         specs.push({
           table: sanitizeTableName(fileBase, usedNames),
           fromFile: upload.name,
-          csvPath: storedPath,
+          format: "csv",
+          reader: "csv",
+          dataPath: storedPath,
         });
       } else if (ext === ".xlsx") {
         specs.push(
@@ -175,8 +190,19 @@ export async function ingestSourceFiles(
             usedNames
           ))
         );
+      } else if (ext === ".parquet" || ext === ".json" || ext === ".ndjson") {
+        // DuckDB 原生读取：parquet 列存与 json/ndjson 文档，零中间转换
+        specs.push({
+          table: sanitizeTableName(fileBase, usedNames),
+          fromFile: upload.name,
+          format: ext === ".parquet" ? "parquet" : ext === ".json" ? "json" : "ndjson",
+          reader: ext === ".parquet" ? "parquet" : "json",
+          dataPath: storedPath,
+        });
       } else {
-        throw new Error(`不支持的文件类型: ${upload.name}（仅 .csv / .xlsx）`);
+        throw new Error(
+          `不支持的文件类型: ${upload.name}（仅 .csv / .xlsx / .parquet / .json / .ndjson）`
+        );
       }
     }
 
@@ -259,7 +285,9 @@ async function excelToCsvSpecs(
       table: dedupeTableName(base, usedNames),
       fromFile: originalName,
       sheet: sheet.name,
-      csvPath,
+      format: "xlsx",
+      reader: "csv",
+      dataPath: csvPath,
     });
   }
   return specs;
@@ -269,7 +297,19 @@ function rowsToCsvText(rows: string[]): string {
   return rows.join("\n") + "\n";
 }
 
-/** 在 staging 目录建 DuckDB 库：逐表 read_csv_auto 灌入并收集列/行数 */
+/** 各格式建表 SQL：标识符白名单插值，文件路径走绑定参数 */
+function createTableSql(reader: DuckDbReader, safeTable: string): string {
+  if (reader === "parquet") {
+    return `CREATE TABLE "${safeTable}" AS SELECT * FROM read_parquet(?)`;
+  }
+  if (reader === "json") {
+    // read_json_auto 自动识别 JSON 数组与 newline-delimited（.ndjson）两种形态
+    return `CREATE TABLE "${safeTable}" AS SELECT * FROM read_json_auto(?)`;
+  }
+  return `CREATE TABLE "${safeTable}" AS SELECT * FROM read_csv_auto(?, header=true)`;
+}
+
+/** 在 staging 目录建 DuckDB 库：逐表按格式读取器灌入并收集列/行数 */
 async function buildDuckDb(
   stagingDir: string,
   specs: IngestTableSpec[]
@@ -282,8 +322,7 @@ async function buildDuckDb(
     for (const spec of specs) {
       const safeTable = assertSafeIdentifier(spec.table);
       // 标识符无法参数化：safeTable 已经白名单断言（^[a-z0-9_]+$），路径走绑定参数
-      const createSql = `CREATE TABLE "${safeTable}" AS SELECT * FROM read_csv_auto(?, header=true)`;
-      await connection.run(createSql, [spec.csvPath]);
+      await connection.run(createTableSql(spec.reader, safeTable), [spec.dataPath]);
       const cols = await connection.run(
         `SELECT column_name AS column, data_type AS type
          FROM information_schema.columns
@@ -299,6 +338,7 @@ async function buildDuckDb(
         table: spec.table,
         fromFile: spec.fromFile,
         ...(spec.sheet !== undefined ? { sheet: spec.sheet } : {}),
+        ...(spec.format !== undefined ? { format: spec.format } : {}),
         rowCount: Number(countRows[0]?.[0] ?? 0),
         columns: colRows.map((r) => ({
           name: String(r[0]),

@@ -125,3 +125,34 @@ describe("manager: Schema Card", () => {
     expect(got!.card.kind).toBe("db-like");
   });
 });
+
+describe("manager: Schema Card 覆盖新文件格式", () => {
+  it("parquet 灌库后结构卡正常生成（格式无关：卡走 describe/execute_sql）", async () => {
+    // 现场生成 parquet fixture
+    const fixtureDb = path.join(rootDir, "fx.duckdb");
+    const { DuckDBInstance } = await import("@duckdb/node-api");
+    const instance = await DuckDBInstance.create(fixtureDb);
+    const conn = await instance.connect();
+    const parquetPath = path.join(rootDir, "fx.parquet");
+    await conn.run(
+      `COPY (SELECT * FROM (VALUES ('华东', 10), ('华北', 20)) AS t(region, sales)) TO ? (FORMAT PARQUET)`,
+      [parquetPath]
+    );
+    conn.closeSync();
+    instance.closeSync();
+
+    await manager.ingestFiles("csv1", [
+      { name: "regions.parquet", data: fs.readFileSync(parquetPath) },
+    ]);
+    await manager.refreshSchemaCard("csv1");
+
+    const got = await manager.getSchemaCard("csv1");
+    expect(got).not.toBeNull();
+    const table = got!.card.tables.find((t) => t.name === "regions");
+    expect(table).toBeDefined();
+    expect(table!.rowCount).toBe(2);
+    const region = table!.columns.find((c) => c.name === "region");
+    expect(region?.cardinality).toBe(2);
+    expect(region?.topValues).toContain("华东");
+  });
+});

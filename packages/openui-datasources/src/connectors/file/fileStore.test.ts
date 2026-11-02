@@ -67,9 +67,12 @@ describe("sanitizeTableName", () => {
 });
 
 describe("isSupportedUpload", () => {
-  it("仅接受 .csv / .xlsx（大小写不敏感）", () => {
+  it("接受 .csv/.xlsx/.parquet/.json/.ndjson（大小写不敏感）", () => {
     expect(isSupportedUpload("a.csv")).toBe(true);
     expect(isSupportedUpload("A.XLSX")).toBe(true);
+    expect(isSupportedUpload("b.parquet")).toBe(true);
+    expect(isSupportedUpload("c.json")).toBe(true);
+    expect(isSupportedUpload("d.NDJSON")).toBe(true);
     expect(isSupportedUpload("a.xls")).toBe(false);
     expect(isSupportedUpload("a.csv.zip")).toBe(false);
     expect(isSupportedUpload("noext")).toBe(false);
@@ -228,5 +231,86 @@ describe("removeSourceFiles", () => {
 
   it("目录不存在时不报错", async () => {
     await expect(removeSourceFiles(filesDir, "ghost")).resolves.toBeUndefined();
+  });
+});
+
+describe("ingestSourceFiles: Parquet / JSON / NDJSON", () => {
+  /** 用 DuckDB 现场生成 parquet fixture（零外部依赖） */
+  async function makeParquetFixture(): Promise<Buffer> {
+    const tmpDb = path.join(filesDir, `fixture-${process.pid}.duckdb`);
+    const instance = await (await import("@duckdb/node-api")).DuckDBInstance.create(tmpDb);
+    const conn = await instance.connect();
+    const out = path.join(filesDir, "fixture.parquet");
+    try {
+      await conn.run(
+        `COPY (SELECT * FROM (VALUES ('北京', 100), ('上海', 250)) AS t(city, amount)) TO ? (FORMAT PARQUET)`,
+        [out]
+      );
+    } finally {
+      conn.closeSync();
+      instance.closeSync();
+    }
+    const buf = fs.readFileSync(out);
+    fs.rmSync(tmpDb, { force: true });
+    fs.rmSync(out, { force: true });
+    return buf;
+  }
+
+  it("parquet 灌库：类型保留 + 可聚合；manifest 记 format=parquet", async () => {
+    const parquet = await makeParquetFixture();
+    expect(parquet.subarray(0, 4).toString("latin1")).toBe("PAR1");
+
+    const manifest = await ingestSourceFiles(filesDir, "pq", [
+      { name: "sales.parquet", data: parquet },
+    ]);
+    const table = manifest.tables.find((t) => t.table === "sales");
+    expect(table?.format).toBe("parquet");
+    expect(table?.rowCount).toBe(2);
+
+    const result = await queryAll(duckDbPath(filesDir, "pq"), "SELECT sum(amount) AS total FROM sales");
+    expect(Number(result.rows[0]?.total)).toBe(350);
+  });
+
+  it("json 数组灌库；ndjson 行文档灌库（read_json_auto 自动识别）", async () => {
+    const jsonArr = Buffer.from(
+      JSON.stringify([
+        { city: "北京", amount: 100 },
+        { city: "上海", amount: 250 },
+      ]),
+      "utf-8"
+    );
+    const ndjson = Buffer.from(
+      '{"product":"apple","qty":3}\n{"product":"pear","qty":5}\n',
+      "utf-8"
+    );
+    const manifest = await ingestSourceFiles(filesDir, "js", [
+      { name: "sales.json", data: jsonArr },
+      { name: "items.ndjson", data: ndjson },
+    ]);
+    expect(manifest.tables.find((t) => t.table === "sales")?.format).toBe("json");
+    expect(manifest.tables.find((t) => t.table === "items")?.format).toBe("ndjson");
+
+    const r1 = await queryAll(duckDbPath(filesDir, "js"), "SELECT sum(amount) AS t FROM sales");
+    expect(Number(r1.rows[0]?.t)).toBe(350);
+    const r2 = await queryAll(duckDbPath(filesDir, "js"), "SELECT sum(qty) AS t FROM items");
+    expect(Number(r2.rows[0]?.t)).toBe(8);
+  });
+
+  it("伪装文件在灌库层明确报错（内容为 CSV 的 .parquet）", async () => {
+    await expect(
+      ingestSourceFiles(filesDir, "fake", [
+        { name: "fake.parquet", data: CSV_SALES },
+      ])
+    ).rejects.toThrow();
+    // 失败后旧数据语义：目标目录不应残留
+    expect(fs.existsSync(path.join(filesDir, "fake"))).toBe(false);
+  });
+
+  it("坏 JSON 在灌库层明确报错", async () => {
+    await expect(
+      ingestSourceFiles(filesDir, "badjson", [
+        { name: "bad.json", data: Buffer.from("{oops", "utf-8") },
+      ])
+    ).rejects.toThrow();
   });
 });

@@ -24,7 +24,7 @@ async function fetchManifest(
 }
 
 /**
- * 文件源上传面板：manifest 展示 + CSV/Excel 上传（完全覆盖语义）。
+ * 文件源上传面板：manifest 展示 + CSV/Excel/Parquet/JSON 上传（完全覆盖语义）。
  * 注意上传请求不能带 Content-Type: application/json，
  * multipart boundary 由 fetch 自动设置，仅透传鉴权头。
  */
@@ -153,14 +153,14 @@ export function FileSourcePanel({ sourceId }: { sourceId: string }) {
           <>
             <Upload className="w-3 h-3" />
             <span>
-              {manifest ? "重新上传（将完全覆盖现有表）" : "上传 .csv / .xlsx（≤50MB）"}
+              {manifest ? "重新上传（将完全覆盖现有表）" : "上传 .csv / .xlsx / .parquet / .json（≤50MB）"}
             </span>
           </>
         )}
         <input
           ref={inputRef}
           type="file"
-          accept=".csv,.xlsx"
+          accept=".csv,.xlsx,.parquet,.json,.ndjson"
           multiple
           className="hidden"
           onChange={(e) => {
