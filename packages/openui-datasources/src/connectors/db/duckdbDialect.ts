@@ -1,7 +1,7 @@
 import { DuckDBInstance } from "@duckdb/node-api";
 import type { DuckDBConnection } from "@duckdb/node-api";
 import type { DbDialect, DbDialectClient } from "./dialect";
-import { guardReadOnlySql } from "./dialect";
+import { guardReadOnlySql } from "./sqlGuard";
 
 const QUERY_TIMEOUT_MS = 5000;
 

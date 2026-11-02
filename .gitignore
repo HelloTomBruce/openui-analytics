@@ -44,3 +44,4 @@ graphify-out
 config
 data/
 .worktrees/
+.pnpm-store/

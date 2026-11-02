@@ -122,3 +122,26 @@ describe("mysqlDialect 连接层（真实 pool 语义守护）", () => {
     );
   });
 });
+
+describe("DIALECTS 注册表（四方言 + 循环依赖回归守护）", () => {
+  it("四键齐备且 dbType 自洽", async () => {
+    const { DIALECTS } = await import("./dialect");
+    expect(Object.keys(DIALECTS).sort()).toEqual([
+      "clickhouse",
+      "mysql",
+      "postgres",
+      "sqlite",
+    ]);
+    for (const [key, dialect] of Object.entries(DIALECTS)) {
+      expect(dialect.dbType).toBe(key);
+    }
+  });
+
+  it("先 import 方言再 import manager（循环依赖回归）：DIALECTS 不再定格 undefined", async () => {
+    // 动态 import 顺序即循环触发顺序（曾使 DIALECTS.sqlite === undefined）
+    const { sqliteDialect } = await import("./sqliteDialect");
+    expect(sqliteDialect.dbType).toBe("sqlite");
+    const { DIALECTS } = await import("./dialect");
+    expect(DIALECTS.sqlite).toBe(sqliteDialect);
+  });
+});

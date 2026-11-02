@@ -30,6 +30,7 @@ import {
   deleteSource,
   maskUrl,
   maskConnectionString,
+  type DbSourceType,
   type DynamicSourceConfig,
   type DatasourcesConfig,
   type ValidateResult,
@@ -46,7 +47,7 @@ export interface DataSourceDescriptor {
   kind: "http-mcp" | "db" | "stdio-cli" | "file";
   tools: string[];
   enabled: boolean;
-  dbType?: "postgres" | "mysql";
+  dbType?: DbSourceType;
   /** 永不回传明文凭证：token 只暴露存在性，url/连接串只暴露脱敏形态 */
   hasToken?: boolean;
   maskedUrl?: string;
@@ -65,7 +66,7 @@ export interface ActiveSourceSummary {
   id: string;
   name: string;
   kind: DataSourceDescriptor["kind"];
-  dbType?: "postgres" | "mysql";
+  dbType?: DbSourceType;
   tools: string[];
 }
 

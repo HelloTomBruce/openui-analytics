@@ -47,6 +47,7 @@ pnpm dev        # http://localhost:3006
 | `OPENAI_BASE_URL` / `LLM_BASE_URL` | OpenAI 兼容接口地址 | `https://api.openai.com/v1` |
 | `OPENAI_MODEL` / `LLM_MODEL` | 模型名 | `gpt-4o-mini` |
 | `PGUSER` / `PGHOST` / `PGDATABASE` / `PGPASSWORD` / `PGPORT` | 分析库连接（缺表时自动建表并写入示例数据） | 本机 `openui_analytics` 库 |
+| 动态 DB 源（设置中配置） | `dbType` 四选：postgres / mysql / **sqlite** / **clickhouse**。sqlite 连接串为数据库文件路径（可带 `sqlite:` 前缀）；clickhouse 为 `http(s)://[user[:pass]@]host:8123[/database]`。全部只读双保险（词法守卫 + 引擎级只读） | — |
 | GitLab MCP Endpoint / Token | 在页面「设置」中配置，存于浏览器 localStorage | `http://127.0.0.1:5002/mcp` |
 | `OPENUI_API_AUTH_TOKEN` | 部署模式的 API 鉴权令牌；配置后所有 `/api/*` 请求须携带 `Authorization: Bearer <token>`（页面「设置 → 访问令牌」），未配置则本地免鉴权 | 无 |
 

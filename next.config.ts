@@ -8,7 +8,11 @@ const nextConfig: NextConfig = {
   cacheComponents: true,
   partialPrefetching: true,
   // DuckDB 原生 .node 插件不可打包进 Turbopack chunk，运行时 require
-  serverExternalPackages: ["@duckdb/node-api", "@duckdb/node-bindings"],
+  serverExternalPackages: [
+    "@duckdb/node-api",
+    "@duckdb/node-bindings",
+    "@clickhouse/client",
+  ],
   turbopack: {
     rules: {
       "*.css": {

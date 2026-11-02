@@ -19,7 +19,8 @@ export interface DbSourceConfig {
   id: string;
   name: string;
   kind: "db";
-  dbType: "postgres" | "mysql";
+  dbType: "postgres" | "mysql" | "sqlite" | "clickhouse";
+  /** sqlite 为文件路径（可带 sqlite: 前缀），其余为 URL 形式连接串 */
   connectionString: string;
   enabled: boolean;
 }
@@ -86,6 +87,16 @@ function defaultConfig(): DatasourcesConfig {
   return { sources: [] };
 }
 
+/** db 源合法 dbType 集合（配置读写与校验共用） */
+export const DB_TYPES = ["postgres", "mysql", "sqlite", "clickhouse"] as const;
+export type DbSourceType = (typeof DB_TYPES)[number];
+
+function isDbType(v: unknown): v is DbSourceType {
+  return (
+    v === "postgres" || v === "mysql" || v === "sqlite" || v === "clickhouse"
+  );
+}
+
 /** 单个 source 条目规范化，不合法条目丢弃（不抛错） */
 function normalizeSourceEntry(entry: unknown): DynamicSourceConfig | null {
   if (!entry || typeof entry !== "object") return null;
@@ -106,7 +117,7 @@ function normalizeSourceEntry(entry: unknown): DynamicSourceConfig | null {
   }
   if (
     o.kind === "db" &&
-    (o.dbType === "postgres" || o.dbType === "mysql") &&
+    isDbType(o.dbType) &&
     typeof o.connectionString === "string" &&
     o.connectionString
   ) {
@@ -183,12 +194,19 @@ export function validateSourceConfig(input: unknown): ValidateResult {
       };
     }
   } else if (o.kind === "db") {
-    const dbType =
-      o.dbType === "postgres" || o.dbType === "mysql" ? o.dbType : undefined;
+    const dbType = isDbType(o.dbType) ? o.dbType : undefined;
     const connectionString =
-      typeof o.connectionString === "string" ? o.connectionString : "";
-    if (!dbType) errors.push("dbType 仅支持 postgres | mysql");
-    if (!CONN_PATTERN.test(connectionString)) {
+      typeof o.connectionString === "string" ? o.connectionString.trim() : "";
+    if (!dbType) {
+      errors.push("dbType 仅支持 postgres | mysql | sqlite | clickhouse");
+    }
+    // sqlite 连接串是文件路径（sqlite: 前缀或纯路径），其余为 URL 形式
+    if (dbType === "sqlite") {
+      const p = connectionString.replace(/^sqlite:/, "");
+      if (!p || /\s/.test(p)) {
+        errors.push("sqlite connectionString 非法（需为数据库文件路径，可带 sqlite: 前缀）");
+      }
+    } else if (!CONN_PATTERN.test(connectionString)) {
       errors.push("connectionString 连接串非法（需 URL 形式且不能为空）");
     }
     if (dbType && errors.length === 0) {

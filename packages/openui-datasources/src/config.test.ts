@@ -190,3 +190,40 @@ describe("文件数据源 kind=file", () => {
     ]);
   });
 });
+
+describe("db 源校验：sqlite / clickhouse", () => {
+  const base = { id: "db1", name: "N", kind: "db" };
+
+  it("sqlite 接受文件路径与 sqlite: 前缀；拒绝空串/含空白", () => {
+    expect(validateSourceConfig({ ...base, dbType: "sqlite", connectionString: "/data/a.db" }).ok).toBe(true);
+    expect(validateSourceConfig({ ...base, dbType: "sqlite", connectionString: "sqlite:./rel.db" }).ok).toBe(true);
+    expect(validateSourceConfig({ ...base, dbType: "sqlite", connectionString: "" }).ok).toBe(false);
+    expect(validateSourceConfig({ ...base, dbType: "sqlite", connectionString: "/a b.db" }).ok).toBe(false);
+  });
+
+  it("clickhouse 要求 URL 形式；非法 dbType 报四选项错误", () => {
+    expect(validateSourceConfig({ ...base, dbType: "clickhouse", connectionString: "http://ch:8123/db" }).ok).toBe(true);
+    const bad = validateSourceConfig({ ...base, dbType: "oracle", connectionString: "x://y" });
+    expect(bad.ok).toBe(false);
+    if (!bad.ok) expect(bad.errors.join()).toContain("sqlite | clickhouse");
+  });
+
+  it("配置往返：sqlite 条目经 normalize 保留（不合法条目丢弃的反例守护）", async () => {
+    const fs = await import("node:fs");
+    const os = await import("node:os");
+    const path = await import("node:path");
+    const { loadConfigFile } = await import("./config");
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cfg-sqlite-"));
+    const file = path.join(dir, "ds.json");
+    fs.writeFileSync(file, JSON.stringify({
+      sources: [
+        { id: "s1", name: "L", kind: "db", dbType: "sqlite", connectionString: "/tmp/a.db", enabled: true },
+        { id: "s2", name: "bad", kind: "db", dbType: "oracle", connectionString: "x" },
+      ],
+    }));
+    const cfg = loadConfigFile(file);
+    expect(cfg.sources).toHaveLength(1);
+    expect(cfg.sources[0]).toMatchObject({ id: "s1", dbType: "sqlite" });
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+});

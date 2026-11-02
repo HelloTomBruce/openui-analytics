@@ -1,6 +1,6 @@
 import { Pool } from "pg";
 import type { DbDialect, DbDialectClient, DbQueryResult } from "./dialect";
-import { guardReadOnlySql } from "./dialect";
+import { guardReadOnlySql } from "./sqlGuard";
 
 /**
  * PostgreSQL 方言：独立于应用 demo 库（@/lib/postgres 的单例 pool），

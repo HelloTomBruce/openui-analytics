@@ -1,5 +1,5 @@
 import type { DbDialect, DbDialectClient, DbQueryResult } from "./dialect";
-import { guardReadOnlySql } from "./dialect";
+import { guardReadOnlySql } from "./sqlGuard";
 
 /**
  * MySQL 方言：mysql2 惰性加载——驱动缺失时给出可操作的降级提示而非崩溃。

@@ -16,7 +16,7 @@ interface FormState {
   kind: SourceKind;
   url: string;
   token: string;
-  dbType: "postgres" | "mysql";
+  dbType: "postgres" | "mysql" | "sqlite" | "clickhouse";
   connectionString: string;
   hasExistingToken: boolean;
   /** 编辑模式下展示脱敏预览（真实凭证永不回填表单） */
@@ -419,13 +419,15 @@ export function DatasourceSettings() {
                   onChange={(e) =>
                     setForm({
                       ...form,
-                      dbType: e.target.value as "postgres" | "mysql",
+                      dbType: e.target.value as FormState["dbType"],
                     })
                   }
                   className={inputClass}
                 >
                   <option value="postgres">PostgreSQL</option>
                   <option value="mysql">MySQL</option>
+                  <option value="sqlite">SQLite（文件路径）</option>
+                  <option value="clickhouse">ClickHouse</option>
                 </select>
               </div>
               <div>
