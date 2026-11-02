@@ -73,3 +73,49 @@ describe("getExecuteSystemPrompt 执行模式提示词", () => {
     expect(prompt).toContain("REVISED PlanReviewCard");
   });
 });
+
+describe("Schema Card 摘要注入（三模式）", () => {
+  const DIGEST = "### 数据源 mysql-orders 结构卡（生成于 2026-11-02 10:30）\n- orders（约 1,234 行）：status text(3 值: paid/shipped/refunded)";
+
+  it("direct / plan / execute 三种模式都携带同一结构卡段", () => {
+    expect(getOpenUISystemPrompt(ACTIVE, DIGEST)).toContain(DIGEST);
+    expect(getOpenUIPlanPrompt(ACTIVE, DIGEST)).toContain(DIGEST);
+    expect(getExecuteSystemPrompt(ACTIVE, DIGEST)).toContain(DIGEST);
+  });
+
+  it("注入段带「优先复用卡」引导语；缺省不注入（向后兼容）", () => {
+    const withCard = getOpenUISystemPrompt(ACTIVE, DIGEST);
+    expect(withCard).toContain("Schema Cards");
+    expect(withCard).toContain("Prefer them over calling list_tables/describe_table");
+
+    const without = getOpenUISystemPrompt(ACTIVE);
+    expect(without).not.toContain("Schema Cards");
+    expect(without).not.toContain("结构卡");
+  });
+});
+
+describe("结构卡预算常量守护（防回归快照）", () => {
+  it("datasources 包预算常量与 handler 总量预算符合契约", async () => {
+    const {
+      CARD_RENDER_BUDGET_BYTES,
+      CARD_STORE_MAX_BYTES,
+      LOW_CARDINALITY_THRESHOLD,
+    } = await import("@openui-analytics/datasources");
+    const { SCHEMA_DIGEST_TOTAL_BUDGET_BYTES } = await import("./handler");
+
+    // 契约快照：单卡渲染 ≤2KB；落盘 ≤64KB；总量 ≤8KB；低基数阈值 50
+    expect({
+      perCardRender: CARD_RENDER_BUDGET_BYTES,
+      storeMax: CARD_STORE_MAX_BYTES,
+      totalDigest: SCHEMA_DIGEST_TOTAL_BUDGET_BYTES,
+      lowCardinality: LOW_CARDINALITY_THRESHOLD,
+    }).toMatchInlineSnapshot(`
+      {
+        "lowCardinality": 50,
+        "perCardRender": 2048,
+        "storeMax": 65536,
+        "totalDigest": 8192,
+      }
+    `);
+  });
+});

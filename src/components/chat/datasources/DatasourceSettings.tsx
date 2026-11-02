@@ -5,6 +5,7 @@ import { Database, Loader2, Pencil, Plus, Power, Trash2 } from "lucide-react";
 import type { DataSourceDescriptor } from "@openui-analytics/datasources";
 import { useDatasources } from "./useDatasources";
 import { FileSourcePanel } from "./FileSourcePanel";
+import { SchemaCardStatus } from "./SchemaCardStatus";
 
 type SourceKind = "http-mcp" | "db" | "stdio-cli" | "file";
 
@@ -261,6 +262,7 @@ export function DatasourceSettings() {
               </div>
 
               {s.kind === "file" && <FileSourcePanel sourceId={s.id} />}
+              <SchemaCardStatus sourceId={s.id} />
             </div>
           );
         })}

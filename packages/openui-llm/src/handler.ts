@@ -3,12 +3,51 @@ import { createOpenAI } from "@ai-sdk/openai";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import {
   mergeToolSets,
+  renderCardForPrompt,
   type ActiveSourceSummary,
   type DatasourceManager,
 } from "@openui-analytics/datasources";
 import { toAiTools } from "@openui-analytics/datasources/adapters/ai";
 import { getOpenUISystemPrompt, getOpenUIPlanPrompt, getExecuteSystemPrompt } from "./prompt";
 import { getCrossSourceLinks } from "./crossSourceMap";
+
+/** 全部启用源结构卡注入 prompt 的总量预算（与单卡 2KB 预算配套，快照测试守护） */
+export const SCHEMA_DIGEST_TOTAL_BUDGET_BYTES = 8 * 1024;
+
+/**
+ * 组装启用源的结构卡摘要：逐源读卡（渲染职责在 datasources 包），
+ * 按总量预算降序纳入，超限的源省略并标注。读卡失败静默跳过（不阻塞分析）。
+ */
+async function buildSchemaDigest(
+  datasources: DatasourceManager,
+  activeSources: ActiveSourceSummary[]
+): Promise<string | undefined> {
+  if (activeSources.length === 0) return undefined;
+  const sections: string[] = [];
+  let used = 0;
+  let omitted = 0;
+  for (const s of activeSources) {
+    try {
+      const got = await datasources.getSchemaCard(s.id);
+      if (!got) continue;
+      const text = renderCardForPrompt(got.card);
+      const bytes = Buffer.byteLength(text, "utf-8");
+      if (used + bytes > SCHEMA_DIGEST_TOTAL_BUDGET_BYTES) {
+        omitted++;
+        continue;
+      }
+      sections.push(text);
+      used += bytes;
+    } catch {
+      // 读卡失败不阻塞分析
+    }
+  }
+  if (sections.length === 0) return undefined;
+  if (omitted > 0) {
+    sections.push(`（另有 ${omitted} 个数据源的结构卡因总量预算省略，可用工具现场探查）`);
+  }
+  return sections.join("\n\n");
+}
 
 export interface AnalyzeHandlerOptions {
   /** 应用持有的数据源单例（src/lib/datasources.ts），包不自建 */
@@ -146,12 +185,13 @@ export function createAnalyzeHandler(opts: AnalyzeHandlerOptions) {
 
       // 按阶段分派系统提示词：plan → 规划变体（探查边界 + PlanReviewCard 契约）；
       // execute → base + 按已确认思路执行的增量约束；direct → base 直出看板
+      const schemaDigest = await buildSchemaDigest(datasources, summaries);
       const system =
         mode === "plan"
-          ? getOpenUIPlanPrompt(summaries)
+          ? getOpenUIPlanPrompt(summaries, schemaDigest)
           : mode === "execute"
-            ? getExecuteSystemPrompt(summaries)
-            : getOpenUISystemPrompt(summaries);
+            ? getExecuteSystemPrompt(summaries, schemaDigest)
+            : getOpenUISystemPrompt(summaries, schemaDigest);
 
       const result = streamText({
         model: languageModel,

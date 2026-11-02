@@ -284,3 +284,62 @@ describe("createAnalyzeHandler 全动态装配", () => {
     expect(arg.maxSteps).toBe(10);
   });
 });
+
+describe("createAnalyzeHandler Schema Card 注入", () => {
+  beforeEach(() => {
+    mockStreamOk();
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("启用源有卡时 system 含结构卡段；无卡时不含", async () => {
+    const manager = await makeFakeManager();
+    const card = {
+      sourceId: "jira",
+      generatedAt: 1761811200000,
+      kind: "db-like" as const,
+      truncated: false,
+      tables: [
+        {
+          name: "issues",
+          rowCount: 42,
+          columns: [
+            { name: "status", type: "text", cardinality: 3, topValues: ["open"] },
+          ],
+        },
+      ],
+    };
+    const withCard = vi.fn(async () => ({ card, stale: false }));
+    const POST1 = createAnalyzeHandler({
+      datasources: { ...manager, getSchemaCard: withCard },
+    });
+    await POST1(makeRequest({ messages: [], apiKey: "k" }));
+    const sys1 = vi.mocked(streamText).mock.calls[0][0].system as string;
+    expect(sys1).toContain("Schema Cards");
+    expect(sys1).toContain("issues（约 42 行）");
+
+    // 无卡（null）→ 不注入
+    const without = vi.fn(async () => null);
+    const POST2 = createAnalyzeHandler({
+      datasources: { ...manager, getSchemaCard: without },
+    });
+    await POST2(makeRequest({ messages: [], apiKey: "k" }));
+    const sys2 = vi.mocked(streamText).mock.calls[1][0].system as string;
+    expect(sys2).not.toContain("Schema Cards");
+  });
+
+  it("读卡失败静默降级（不阻塞分析请求）", async () => {
+    const manager = await makeFakeManager();
+    const broken = vi.fn(async () => {
+      throw new Error("disk gone");
+    });
+    const POST = createAnalyzeHandler({
+      datasources: { ...manager, getSchemaCard: broken },
+    });
+    const res = await POST(makeRequest({ messages: [], apiKey: "k" }));
+    expect(res.status).toBe(200);
+    expect(streamText).toHaveBeenCalledTimes(1);
+  });
+});

@@ -79,12 +79,29 @@ function dataAccessSection(activeSources: ActiveSourceSummary[]): string {
   return `## Data Access:\n${lines.join("\n")}`;
 }
 
+/**
+ * Schema Card 摘要段：启用源的结构卡 markdown 附录（datasources 包渲染，
+ * 本包只负责拼接进 system prompt）。有卡时引导 LLM 优先复用卡内结构知识，
+ * 减少 list_tables/describe_table 往返。
+ */
+function schemaDigestSection(schemaDigest?: string): string {
+  if (!schemaDigest) return "";
+  return `
+
+## Schema Cards (pre-verified structure knowledge — trust it before probing):
+${schemaDigest}
+
+The cards above were generated from live schema inspection. Prefer them over calling list_tables/describe_table for tables/columns already documented; only probe when the card is missing the structure you need or a query error suggests the schema drifted.`;
+}
+
 export function getOpenUISystemPrompt(
-  activeSources: ActiveSourceSummary[]
+  activeSources: ActiveSourceSummary[],
+  schemaDigest?: string
 ): string {
   const preamble = `You are an expert Data Analyst & Engineering BI Assistant powered by OpenUI Generative UI and MCP (Model Context Protocol).
 
 ${dataAccessSection(activeSources)}
+${schemaDigestSection(schemaDigest)}
 
 ## Cross-Source Joint Analysis (禅道 × GitLab):
 When a question involves BOTH project progress/quality (ZenTao) AND code activity (GitLab), e.g. "为什么这个迭代延期了" or "这个项目代码活跃度与 bug 趋势的关系":
@@ -152,10 +169,14 @@ You have a rich set of declarative components available:
  * 规划模式系统提示词：先探查数据结构，输出分析思路 + PlanReviewCard 供用户确认，
  * 严禁在本轮产出完整看板或全量取数。
  */
-export function getOpenUIPlanPrompt(activeSources: ActiveSourceSummary[]): string {
+export function getOpenUIPlanPrompt(
+  activeSources: ActiveSourceSummary[],
+  schemaDigest?: string
+): string {
   const preamble = `You are an expert Data Analyst doing REQUIREMENT SCOPING before any dashboard is built, powered by OpenUI Generative UI and MCP (Model Context Protocol).
 
 ${dataAccessSection(activeSources)}
+${schemaDigestSection(schemaDigest)}
 
 ## Planning Mode (CRITICAL - you are NOT producing the final dashboard in this round):
 The user just asked an analytical question. Your job:
@@ -199,8 +220,11 @@ The user just asked an analytical question. Your job:
  * 执行模式系统提示词：base 提示词 + 「按已确认思路执行」增量约束。
  * 用户最新消息推翻原思路时，允许输出修订版 PlanReviewCard 而非硬套旧规划。
  */
-export function getExecuteSystemPrompt(activeSources: ActiveSourceSummary[]): string {
-  const base = getOpenUISystemPrompt(activeSources);
+export function getExecuteSystemPrompt(
+  activeSources: ActiveSourceSummary[],
+  schemaDigest?: string
+): string {
+  const base = getOpenUISystemPrompt(activeSources, schemaDigest);
   return `${base}
 
 ## Confirmed Plan Execution Mode:
