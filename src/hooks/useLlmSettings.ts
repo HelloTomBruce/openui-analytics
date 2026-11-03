@@ -2,8 +2,13 @@
 
 import { useMemo, useState } from "react";
 import { ACCESS_TOKEN_STORAGE_KEY, authHeaders } from "@/lib/auth";
+import {
+  findPreset,
+  inferProviderByBaseURL,
+} from "@/lib/llmProviders";
 
 const STORAGE_KEYS = {
+  provider: "openui_llm_provider",
   apiKey: "openui_llm_api_key",
   baseURL: "openui_llm_base_url",
   model: "openui_llm_model",
@@ -31,6 +36,12 @@ function readStored(key: string, fallback: string): string {
  */
 export function useLlmSettings() {
   const [showSettings, setShowSettings] = useState(false);
+  // Provider 预设：未存储时按已存 baseURL 反推（老用户配置无损迁移）
+  const [providerId, setProviderId] = useState(() =>
+    readStored(STORAGE_KEYS.provider, "") || inferProviderByBaseURL(
+      readStored(STORAGE_KEYS.baseURL, DEFAULT_BASE_URL)
+    )
+  );
   const [apiKey, setApiKey] = useState(() => readStored(STORAGE_KEYS.apiKey, ""));
   const [baseURL, setBaseURL] = useState(() =>
     readStored(STORAGE_KEYS.baseURL, DEFAULT_BASE_URL)
@@ -54,7 +65,22 @@ export function useLlmSettings() {
       : "openai"
   );
 
+  /**
+   * 选择 Provider 预设：联动填充协议 / baseURL / 默认模型。
+   * 自定义（custom）不动现有值，回退自由输入形态。
+   */
+  const applyProvider = (id: string) => {
+    setProviderId(id);
+    const preset = findPreset(id);
+    if (preset) {
+      setBaseURL(preset.baseURL);
+      setProtocol(preset.protocol);
+      setModel(preset.defaultModel);
+    }
+  };
+
   const saveSettings = () => {
+    localStorage.setItem(STORAGE_KEYS.provider, providerId);
     localStorage.setItem(STORAGE_KEYS.apiKey, apiKey);
     localStorage.setItem(STORAGE_KEYS.baseURL, baseURL);
     localStorage.setItem(STORAGE_KEYS.model, model);
@@ -80,6 +106,8 @@ export function useLlmSettings() {
   return {
     showSettings,
     setShowSettings,
+    providerId,
+    applyProvider,
     apiKey,
     setApiKey,
     baseURL,

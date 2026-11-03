@@ -15,6 +15,7 @@ const fetchMock = vi.fn().mockResolvedValue({
 function renderModal(props: Partial<SettingsModalProps> = {}) {
   return render(
     <SettingsModal
+      providerId="custom"
       apiKey="sk-test"
       baseURL="https://api.openai.com/v1"
       model="gpt-4o-mini"
@@ -22,6 +23,7 @@ function renderModal(props: Partial<SettingsModalProps> = {}) {
       temperature="0.2"
       maxTokens=""
       protocol="openai"
+      onProviderChange={vi.fn()}
       onApiKeyChange={vi.fn()}
       onBaseURLChange={vi.fn()}
       onModelChange={vi.fn()}
@@ -102,6 +104,70 @@ describe("SettingsModal tab 布局", () => {
     fireEvent.click(screen.getByRole("button", { name: "保存配置" }));
     expect(onClose).toHaveBeenCalledTimes(1);
     expect(onSave).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("SettingsModal Provider 预设", () => {
+  it("Provider 下拉含全部预设与「自定义」", () => {
+    renderModal();
+
+    const select = screen.getByLabelText(/Provider/) as HTMLSelectElement;
+    // 内置精选 10 项（无网络环境目录拉取失败回退内置）+ 自定义
+    expect(select.querySelectorAll("option").length).toBe(11);
+    expect(
+      screen.getByRole("option", { name: "Kimi（Moonshot）" })
+    ).toBeInTheDocument();
+  });
+
+  it("预设 Provider 时 Model 为手输输入框 + datalist 建议（非强约束下拉）", () => {
+    renderModal({
+      providerId: "deepseek",
+      protocol: "openai",
+      baseURL: "https://api.deepseek.com/v1",
+      model: "deepseek-chat",
+    });
+    const modelInput = screen.getByLabelText(
+      /Model（手动输入/
+    ) as HTMLInputElement;
+    expect(modelInput.tagName).toBe("INPUT");
+    expect(modelInput.value).toBe("deepseek-chat");
+    expect(modelInput).toHaveAttribute("list", "settings-model-options");
+    const datalist = document.getElementById(
+      "settings-model-options"
+    ) as HTMLDataListElement;
+    const values = Array.from(datalist.options).map((o) => o.value);
+    expect(values).toContain("deepseek-reasoner");
+    expect(values).toContain("deepseek-chat");
+  });
+
+  it("自定义 Provider 时无 datalist，协议与 Base URL 直接展开可见", () => {
+    renderModal({ providerId: "custom" });
+    const modelInput = screen.getByLabelText(
+      /Model（手动输入/
+    ) as HTMLInputElement;
+    expect(modelInput).not.toHaveAttribute("list");
+    expect(
+      document.getElementById("settings-model-options")
+    ).not.toBeInTheDocument();
+    // 自定义场景：协议与 Base URL 不藏在折叠区
+    expect(screen.queryByText(/高级：协议与接口地址/)).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/Base URL/i)).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: /OpenAI 兼容/i })).toBeChecked();
+  });
+
+  it("预设 Provider 时协议与 Base URL 收进高级折叠区，且字段存在", () => {
+    renderModal({ providerId: "deepseek" });
+    expect(screen.getByText(/高级：协议与接口地址/)).toBeInTheDocument();
+    // 折叠区内字段仍在 DOM（details 未展开亦可查询）
+    expect(screen.getByLabelText(/Base URL/i)).toBeInTheDocument();
+  });
+
+  it("API Key 占位符随 Provider 预设变化", () => {
+    renderModal({ providerId: "deepseek" });
+    expect(screen.getByLabelText("API Key")).toHaveAttribute(
+      "placeholder",
+      "platform.deepseek.com 获取 sk-..."
+    );
   });
 });
 

@@ -39,6 +39,8 @@ export default function ChatDashboard() {
   const {
     showSettings,
     setShowSettings,
+    providerId,
+    applyProvider,
     apiKey,
     setApiKey,
     baseURL,
@@ -473,6 +475,7 @@ export default function ChatDashboard() {
 
       {showSettings && (
         <SettingsModal
+          providerId={providerId}
           apiKey={apiKey}
           baseURL={baseURL}
           model={model}
@@ -480,6 +483,7 @@ export default function ChatDashboard() {
           temperature={temperature}
           maxTokens={maxTokens}
           protocol={protocol}
+          onProviderChange={applyProvider}
           onApiKeyChange={setApiKey}
           onBaseURLChange={setBaseURL}
           onModelChange={setModel}

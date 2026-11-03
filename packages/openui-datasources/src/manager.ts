@@ -131,6 +131,13 @@ const HEALTH_TIMEOUT_MS = 3000;
 const SCHEMA_MISS_RE =
   /column .{0,64}(does not exist|not found)|unknown column|no such column|unknown identifier|binder error|there is no column|doesn't exist/i;
 
+/**
+ * Streamable HTTP 会话失效特征：服务端重启/会话过期后，
+ * 旧 Mcp-Session-Id 的 POST 会收到 {"error":"Session not found"}（或 terminated/expired 变体）。
+ */
+const SESSION_EXPIRED_RE =
+  /session (not found|terminated|expired)|invalid session id/i;
+
 interface ConnCacheEntry {
   key: string;
   connection: McpConnection;
@@ -466,6 +473,37 @@ export function createDatasourceManager(opts: {
     return entry;
   };
 
+  /**
+   * 会话失效自愈：http-mcp 源的 listTools/callTool 报「Session not found」类错误时，
+   * 驱逐缓存连接 → 重新握手 → 用新连接重试一次（对调用方透明）。
+   * 非 http-mcp 源或非会话类错误原样抛出；重试仍失败则抛出第二次的错误。
+   */
+  const withSessionRetry = async <T>(
+    source: DynamicSourceConfig,
+    fn: (connection: McpConnection) => Promise<T>
+  ): Promise<{ result: T; connection: McpConnection }> => {
+    let entry = await getOrConnectEntry(source);
+    try {
+      return { result: await fn(entry.connection), connection: entry.connection };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (source.kind !== "http-mcp" || !SESSION_EXPIRED_RE.test(message)) {
+        throw err;
+      }
+      console.warn(
+        `[Dynamic ${source.id}] MCP session expired, reconnecting once`
+      );
+      // 旧 entry（含 bindings）随缓存驱逐一并失效；下次 tools() 在新 entry 上重建绑定
+      connCache.delete(source.id);
+      await entry.connection.close().catch(() => {});
+      entry = await getOrConnectEntry(source);
+      return {
+        result: await fn(entry.connection),
+        connection: entry.connection,
+      };
+    }
+  };
+
   return {
     readConfig,
     writeConfig(c) {
@@ -499,8 +537,11 @@ export function createDatasourceManager(opts: {
       // 结构卡惰性生成：无卡且未失败过时后台建一次；已标脏时重建（熔断在生命周期模块）
       cardLifecycle.ensure(source);
       if (entry.bindings) return entry.bindings;
-      const connection = entry.connection;
-      const mcpTools = await connection.listTools();
+      // listTools 走会话自愈：成功连接用于构建 bindings（连接可能是重试后的新连接）
+      const { result: mcpTools, connection } = await withSessionRetry(
+        source,
+        (conn) => conn.listTools()
+      );
       const logPrefix = `Dynamic ${source.id}`;
       const bindings = mcpTools.map((t) => ({
         name: `${source.id}_${t.name}`,
@@ -509,7 +550,9 @@ export function createDatasourceManager(opts: {
         inputSchema: t.inputSchema,
         call: async (args: Record<string, unknown>) => {
           console.log(`[${logPrefix}] execute ${t.name}:`, args);
-          const res = await connection.callTool(t.name, args);
+          const { result: res } = await withSessionRetry(source, (conn) =>
+            conn.callTool(t.name, args)
+          );
           try {
             return parseMcpToolResult(res, `MCP tool ${t.name}`);
           } catch (err) {
@@ -523,7 +566,12 @@ export function createDatasourceManager(opts: {
           }
         },
       }));
+      // 会话自愈可能已换新 entry：绑定挂到「当前缓存中的 entry」（若已被替换则丢弃）
       entry.bindings = bindings;
+      const currentEntry = connCache.get(source.id);
+      if (currentEntry && currentEntry !== entry) {
+        currentEntry.bindings ??= bindings;
+      }
       return bindings;
     },
     async close(id) {

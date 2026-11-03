@@ -275,6 +275,64 @@ describe("manager 工具装配", () => {
     );
   });
 
+  it("http-mcp 会话失效（Session not found）自动重连重试一次，透明恢复", async () => {
+    // clientA：listTools 正常，callTool 首次报会话失效；clientB：重连后成功
+    const clientA = makeFakeMcpClient("gitlab_list_projects");
+    clientA.callTool = vi.fn(async () => {
+      throw new Error(
+        'Streamable HTTP error: Error POSTing to endpoint: {"error":"Session not found"}'
+      );
+    });
+    const clientB = makeFakeMcpClient("gitlab_list_projects");
+    vi.mocked(connectHttpMcp)
+      .mockResolvedValueOnce(clientA as never)
+      .mockResolvedValueOnce(clientB as never);
+    const m = managerFor(JSON.stringify({ sources: [HTTP_SOURCE] }));
+
+    const bindings = await m.tools(HTTP_SOURCE);
+    const out = await bindings[0].call({ membership: true });
+
+    expect(out).toEqual({ rows: 1 });
+    // 驱逐旧连接并重新握手，重试走新连接
+    expect(clientA.close).toHaveBeenCalledTimes(1);
+    expect(connectHttpMcp).toHaveBeenCalledTimes(2);
+    expect(clientB.callTool).toHaveBeenCalledWith({
+      name: "gitlab_list_projects",
+      arguments: { membership: true },
+    });
+  });
+
+  it("http-mcp 非会话类错误不做重连重试", async () => {
+    const clientA = makeFakeMcpClient("gitlab_list_projects");
+    clientA.callTool = vi.fn(async () => {
+      throw new Error("boom: 500 internal");
+    });
+    vi.mocked(connectHttpMcp).mockResolvedValue(clientA as never);
+    const m = managerFor(JSON.stringify({ sources: [HTTP_SOURCE] }));
+
+    const bindings = await m.tools(HTTP_SOURCE);
+    await expect(bindings[0].call({})).rejects.toThrow(/500 internal/);
+    expect(connectHttpMcp).toHaveBeenCalledTimes(1);
+  });
+
+  it("tools() 的 listTools 命中会话失效时用新连接重建绑定", async () => {
+    const clientA = makeFakeMcpClient("gitlab_list_projects");
+    clientA.listTools = vi.fn(async () => {
+      throw new Error("Session terminated by the server");
+    });
+    const clientB = makeFakeMcpClient("gitlab_list_projects");
+    vi.mocked(connectHttpMcp)
+      .mockResolvedValueOnce(clientA as never)
+      .mockResolvedValueOnce(clientB as never);
+    const m = managerFor(JSON.stringify({ sources: [HTTP_SOURCE] }));
+
+    const bindings = await m.tools(HTTP_SOURCE);
+    expect(bindings.map((b) => b.name)).toEqual(["jira_gitlab_list_projects"]);
+    expect(clientA.close).toHaveBeenCalledTimes(1);
+    // 新连接上执行工具成功
+    await expect(bindings[0].call({})).resolves.toEqual({ rows: 1 });
+  });
+
   it("stdio-cli 源经 StdioClientTransport 装载并带 id 前缀，args 变更重建连接", async () => {
     const clientA = makeFakeMcpClient("zentao_bug");
     const clientB = makeFakeMcpClient("zentao_bug");
