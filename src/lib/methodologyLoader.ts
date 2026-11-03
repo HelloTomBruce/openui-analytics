@@ -61,10 +61,16 @@ export function loadUserMethodCards(
 /** 组装应用方法论库：内置 10 卡 + 用户卡（同 id 覆盖内置），供 handler 注入 */
 export function createAppMethodology(
   dir: string = USER_METHOD_CARDS_DIR
-): { library: MethodLibrary; skipped: CardValidationIssue[] } {
+): {
+  library: MethodLibrary;
+  skipped: CardValidationIssue[];
+  /** 用户卡 id 集合（含覆盖内置的 id）——查看入口据此判定卡来源 */
+  userIds: Set<string>;
+} {
   const { cards, skipped } = loadUserMethodCards(dir);
   return {
     ...createMethodLibrary({ builtin: builtinMethodCards, custom: cards }),
     skipped,
+    userIds: new Set(cards.map((c) => c.id)),
   };
 }

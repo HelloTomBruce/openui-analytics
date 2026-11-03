@@ -23,6 +23,7 @@ import { SourcePicker } from "@/components/chat/SourcePicker";
 import { useDatasourceList } from "@/components/chat/datasources/useDatasources";
 import { SettingsModal } from "@/components/chat/SettingsModal";
 import { DevToolsPanel } from "@/components/chat/DevToolsPanel";
+import { MethodologyModal } from "@/components/chat/MethodologyModal";
 import { Toaster } from "@/components/Toaster";
 import { toast } from "@/lib/toast";
 
@@ -40,6 +41,8 @@ const IS_DEV = process.env.NODE_ENV === "development";
 export default function ChatDashboard() {
   const [showRawLang, setShowRawLang] = useState(false);
   const [showDevTools, setShowDevTools] = useState(false);
+  // 分析方法论查看入口（侧边栏底部按钮打开，弹窗内自取数）
+  const [showMethodology, setShowMethodology] = useState(false);
   const [devToolsCode, setDevToolsCode] = useState(DEFAULT_SANDBOX_CODE);
   // Plan-first：新问题先出分析思路（默认关）；「先出思路」开关
   const [planMode, setPlanMode] = useState(false);
@@ -380,6 +383,7 @@ export default function ChatDashboard() {
         onClearAllSessions={handleClearAllSessions}
         onPresetSelect={handlePresetSelect}
         onToggleRawLang={handleToggleRawLang}
+        onOpenMethodology={() => setShowMethodology(true)}
         onCancelEdit={handleCancelRename}
       />
 
@@ -481,6 +485,12 @@ export default function ChatDashboard() {
         onRename={handleRenameDashboard}
         onDelete={handleDeleteDashboard}
         onAction={handlePreviewAction}
+      />
+
+      {/* 分析方法论查看（合并卡集：内置 + 用户覆盖） */}
+      <MethodologyModal
+        open={showMethodology}
+        onClose={() => setShowMethodology(false)}
       />
 
       {showSettings && (

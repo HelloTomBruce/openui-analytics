@@ -28,6 +28,7 @@ const baseProps = {
   onClearAllSessions: vi.fn(),
   onPresetSelect: vi.fn(),
   onToggleRawLang: vi.fn(),
+  onOpenMethodology: vi.fn(),
 };
 
 const SUMMARY: DashboardSummary = {
@@ -154,5 +155,15 @@ describe("ChatSidebar 看板库 tab", () => {
     expect(input).toHaveValue("");
     fireEvent.change(input, { target: { files: [file] } });
     expect(props.onImportDashboard).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("ChatSidebar 底部功能栏", () => {
+  it("「分析方法论」按钮触发 onOpenMethodology", () => {
+    const props = { ...baseProps };
+    render(<ChatSidebar {...props} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "分析方法论" }));
+    expect(props.onOpenMethodology).toHaveBeenCalledTimes(1);
   });
 });

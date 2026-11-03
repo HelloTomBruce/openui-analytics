@@ -20,6 +20,7 @@ import {
   Star,
   Download,
   Upload,
+  BookOpen,
 } from "lucide-react";
 import type { ChatSession } from "@/lib/sessionStorage";
 // 仅取类型（编译期擦除）
@@ -56,6 +57,8 @@ interface ChatSidebarProps {
   onClearAllSessions: () => void;
   onPresetSelect: (preset: string) => void;
   onToggleRawLang: () => void;
+  /** 打开分析方法论查看弹窗 */
+  onOpenMethodology: () => void;
 }
 
 export function ChatSidebar({
@@ -83,6 +86,7 @@ export function ChatSidebar({
   onClearAllSessions,
   onPresetSelect,
   onToggleRawLang,
+  onOpenMethodology,
 }: ChatSidebarProps) {
   const [sidebarTab, setSidebarTab] = useState<
     "history" | "dashboards" | "presets"
@@ -306,6 +310,13 @@ export function ChatSidebar({
           >
             <FileCode className="w-3.5 h-3.5" />
             <span>{showRawLang ? "隐藏 OpenUI 源码" : "查看 OpenUI Lang 源码"}</span>
+          </button>
+          <button
+            onClick={onOpenMethodology}
+            className="w-full text-xs p-2 rounded-lg border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors flex items-center gap-2"
+          >
+            <BookOpen className="w-3.5 h-3.5" />
+            <span>分析方法论</span>
           </button>
         </div>
       </div>
