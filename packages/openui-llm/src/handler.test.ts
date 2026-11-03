@@ -229,6 +229,32 @@ describe("createAnalyzeHandler 全动态装配", () => {
     expect(streamText).toHaveBeenCalledTimes(1);
   });
 
+  it("maxTokens：请求体优先并钳制 1024–65536；缺省 16384；env LLM_MAX_OUTPUT_TOKENS 兜底", async () => {
+    const manager = await makeFakeManager();
+    const POST = createAnalyzeHandler({ datasources: manager });
+
+    // 请求体超上限 → 钳到 65536
+    await POST(makeRequest({ messages: [], apiKey: "k", maxTokens: 999999 }));
+    expect(vi.mocked(streamText).mock.calls[0][0].maxTokens).toBe(65536);
+
+    // 请求体低于下限 → 钳到 1024
+    await POST(makeRequest({ messages: [], apiKey: "k", maxTokens: 100 }));
+    expect(vi.mocked(streamText).mock.calls[1][0].maxTokens).toBe(1024);
+
+    // 缺省 → 16384
+    await POST(makeRequest({ messages: [], apiKey: "k" }));
+    expect(vi.mocked(streamText).mock.calls[2][0].maxTokens).toBe(16384);
+
+    // env 覆盖缺省
+    process.env.LLM_MAX_OUTPUT_TOKENS = "32768";
+    try {
+      await POST(makeRequest({ messages: [], apiKey: "k" }));
+      expect(vi.mocked(streamText).mock.calls[3][0].maxTokens).toBe(32768);
+    } finally {
+      delete process.env.LLM_MAX_OUTPUT_TOKENS;
+    }
+  });
+
   it("sources 指定动态源时装载其工具并入 tools，prompt 列出该源", async () => {
     const manager = await makeFakeManager();
     vi.mocked(manager.tools).mockResolvedValueOnce([

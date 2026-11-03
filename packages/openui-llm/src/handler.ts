@@ -102,6 +102,13 @@ export interface AnalyzeRequestBody {
   baseURL?: string;
   model?: string;
   temperature?: number | string;
+  /**
+   * 输出 token 上限（每个生成步）：
+   * - Anthropic 协议端点强制要求 max_tokens，provider 缺省仅 4096，推理型模型思考阶段即烧尽，
+   *   造成 finishReason=length 的静默截断（无文本、无后续工具调用）
+   * - 可选，钳制 1024–65536；缺省 16384（可由环境变量 LLM_MAX_OUTPUT_TOKENS 覆盖默认值）
+   */
+  maxTokens?: number | string;
   sources?: string[];
   /** 接口协议：anthropic（如 Kimi Coding 的 /v1/messages）或缺省 openai 兼容（/chat/completions） */
   protocol?: "openai" | "anthropic";
@@ -137,6 +144,7 @@ export function createAnalyzeHandler(opts: AnalyzeHandlerOptions) {
         baseURL: clientBaseURL,
         model: clientModel,
         temperature: clientTemperature,
+        maxTokens: clientMaxTokens,
         sources: clientSources,
         protocol: clientProtocol,
         mode: clientMode,
@@ -151,6 +159,17 @@ export function createAnalyzeHandler(opts: AnalyzeHandlerOptions) {
         Number.isFinite(parsedTemp) && clientTemperature !== undefined && clientTemperature !== ""
           ? Math.min(Math.max(parsedTemp, 0), 2)
           : 0.2;
+
+      // 输出 token 上限：请求体 maxTokens 优先，其次 LLM_MAX_OUTPUT_TOKENS，缺省 16384；钳制 1024–65536
+      const envMaxTokens = Number(process.env.LLM_MAX_OUTPUT_TOKENS);
+      const parsedMaxTokens = Number(clientMaxTokens);
+      const maxOutputTokensBase =
+        Number.isFinite(parsedMaxTokens) && clientMaxTokens !== undefined && clientMaxTokens !== ""
+          ? parsedMaxTokens
+          : Number.isFinite(envMaxTokens) && process.env.LLM_MAX_OUTPUT_TOKENS !== undefined
+            ? envMaxTokens
+            : 16384;
+      const maxOutputTokens = Math.min(Math.max(Math.round(maxOutputTokensBase), 1024), 65536);
 
       // 分析阶段归一化：非法值回落 direct，保持向后兼容
       const mode =
@@ -252,6 +271,8 @@ export function createAnalyzeHandler(opts: AnalyzeHandlerOptions) {
         // 客户端消息体原样透传（与原实现一致，不做结构校验）
         messages: messages as CoreMessage[],
         temperature,
+        // AI SDK v1 参数名为 maxTokens（透传 max_tokens；Anthropic 端点必填）
+        maxTokens: maxOutputTokens,
         tools: {
           ...loadedTools,
           cross_source_link: tool({

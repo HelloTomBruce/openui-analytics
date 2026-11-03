@@ -10,6 +10,8 @@ export interface SettingsModalProps {
   model: string;
   accessToken: string;
   temperature: string;
+  /** 最大输出 tokens（1024–65536），留空走服务端默认；Anthropic 端点必填 max_tokens */
+  maxTokens: string;
   /** 接口协议：openai 兼容（/chat/completions）或 anthropic（/v1/messages，如 Kimi Coding） */
   protocol: "openai" | "anthropic";
   onApiKeyChange: (v: string) => void;
@@ -17,6 +19,7 @@ export interface SettingsModalProps {
   onModelChange: (v: string) => void;
   onAccessTokenChange: (v: string) => void;
   onTemperatureChange: (v: string) => void;
+  onMaxTokensChange: (v: string) => void;
   onProtocolChange: (v: "openai" | "anthropic") => void;
   onSave: () => void;
   onClose: () => void;
@@ -35,12 +38,14 @@ export function SettingsModal({
   model,
   accessToken,
   temperature,
+  maxTokens,
   protocol,
   onApiKeyChange,
   onBaseURLChange,
   onModelChange,
   onAccessTokenChange,
   onTemperatureChange,
+  onMaxTokensChange,
   onProtocolChange,
   onSave,
   onClose,
@@ -206,6 +211,24 @@ export function SettingsModal({
                 value={temperature}
                 onChange={(e) => onTemperatureChange(e.target.value)}
                 className="w-full accent-blue-600"
+              />
+            </div>
+
+            <div>
+              <label htmlFor="settings-max-tokens" className="block text-slate-500 mb-1 font-medium flex items-center justify-between">
+                <span>最大输出 Tokens（Anthropic 协议必填，推理模型建议 32768+）</span>
+                <span className="font-mono text-slate-400">{maxTokens || "16384（默认）"}</span>
+              </label>
+              <input
+                id="settings-max-tokens"
+                type="number"
+                min="1024"
+                max="65536"
+                step="1024"
+                value={maxTokens}
+                onChange={(e) => onMaxTokensChange(e.target.value)}
+                placeholder="留空使用服务端默认 16384"
+                className="w-full p-2.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 font-mono"
               />
             </div>
 

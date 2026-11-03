@@ -8,12 +8,15 @@ const STORAGE_KEYS = {
   baseURL: "openui_llm_base_url",
   model: "openui_llm_model",
   temperature: "openui_llm_temperature",
+  maxTokens: "openui_llm_max_tokens",
   protocol: "openui_llm_protocol",
 } as const;
 
 const DEFAULT_BASE_URL = "https://api.openai.com/v1";
 const DEFAULT_MODEL = "gpt-4o-mini";
 const DEFAULT_TEMPERATURE = "0.2";
+// 留空 → 服务端默认 16384（Anthropic 协议端点必须显式带 max_tokens，避免 finishReason=length 静默截断）
+const DEFAULT_MAX_TOKENS = "";
 const DEFAULT_PROTOCOL = "openai";
 
 function readStored(key: string, fallback: string): string {
@@ -40,6 +43,10 @@ export function useLlmSettings() {
   const [temperature, setTemperature] = useState(() =>
     readStored(STORAGE_KEYS.temperature, DEFAULT_TEMPERATURE)
   );
+  // 最大输出 tokens：留空走服务端默认；推理型模型建议 32768+
+  const [maxTokens, setMaxTokens] = useState(() =>
+    readStored(STORAGE_KEYS.maxTokens, DEFAULT_MAX_TOKENS)
+  );
   // 接口协议：openai 兼容（/chat/completions）或 anthropic（/v1/messages，如 Kimi Coding）
   const [protocol, setProtocol] = useState<"openai" | "anthropic">(() =>
     readStored(STORAGE_KEYS.protocol, DEFAULT_PROTOCOL) === "anthropic"
@@ -52,6 +59,7 @@ export function useLlmSettings() {
     localStorage.setItem(STORAGE_KEYS.baseURL, baseURL);
     localStorage.setItem(STORAGE_KEYS.model, model);
     localStorage.setItem(STORAGE_KEYS.temperature, temperature);
+    localStorage.setItem(STORAGE_KEYS.maxTokens, maxTokens);
     localStorage.setItem(STORAGE_KEYS.protocol, protocol);
     localStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, accessToken);
     setShowSettings(false);
@@ -63,9 +71,10 @@ export function useLlmSettings() {
       baseURL: baseURL.trim() || undefined,
       model: model.trim() || undefined,
       temperature: temperature.trim() || undefined,
+      maxTokens: maxTokens.trim() || undefined,
       protocol,
     }),
-    [apiKey, baseURL, model, temperature, protocol]
+    [apiKey, baseURL, model, temperature, maxTokens, protocol]
   );
 
   return {
@@ -81,6 +90,8 @@ export function useLlmSettings() {
     setAccessToken,
     temperature,
     setTemperature,
+    maxTokens,
+    setMaxTokens,
     protocol,
     setProtocol,
     authHeaders,

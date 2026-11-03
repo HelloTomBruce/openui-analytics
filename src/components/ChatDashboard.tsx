@@ -49,6 +49,8 @@ export default function ChatDashboard() {
     setAccessToken,
     temperature,
     setTemperature,
+    maxTokens,
+    setMaxTokens,
     protocol,
     setProtocol,
     authHeaders,
@@ -476,12 +478,14 @@ export default function ChatDashboard() {
           model={model}
           accessToken={accessToken}
           temperature={temperature}
+          maxTokens={maxTokens}
           protocol={protocol}
           onApiKeyChange={setApiKey}
           onBaseURLChange={setBaseURL}
           onModelChange={setModel}
           onAccessTokenChange={setAccessToken}
           onTemperatureChange={setTemperature}
+          onMaxTokensChange={setMaxTokens}
           onProtocolChange={setProtocol}
           onSave={saveSettings}
           onClose={handleCloseSettings}
