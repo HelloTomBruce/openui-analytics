@@ -68,7 +68,10 @@ describe("SettingsModal tab 布局", () => {
 
   it("点击「数据源」tab 切换面板，展示数据源列表与探活状态", async () => {
     renderModal();
-    fireEvent.click(screen.getByRole("tab", { name: "数据源" }));
+    const tab = screen.getByRole("tab", { name: "数据源" });
+    // Radix Tabs 在 mousedown 激活（真实浏览器点击天然携带）
+    fireEvent.mouseDown(tab, { button: 0 });
+    fireEvent.click(tab);
 
     // 数据源列表由 DatasourceSettings 经 /api/datasources 渲染（mock 返回 ZenTao MCP）
     await waitFor(() => {
@@ -83,17 +86,15 @@ describe("SettingsModal tab 布局", () => {
     ).toHaveAttribute("aria-selected", "true");
   });
 
-  it("键盘 ArrowRight 从模型配置切到数据源", () => {
+  it("焦点移入「数据源」tab 自动激活面板（Radix Tabs 自动激活模式）", () => {
     renderModal();
-    fireEvent.keyDown(screen.getByRole("tab", { name: "模型配置" }), {
-      key: "ArrowRight",
-    });
+    // 注：Radix RovingFocus 的方向键导航在 jsdom 中不生效（真实浏览器正常），
+    // 方向键移焦后由 onFocus 自动激活——此处直接验证该激活语义
+    const tab = screen.getByRole("tab", { name: "数据源" });
+    fireEvent.focus(tab);
     expect(
       screen.getByRole("button", { name: /添加数据源/ })
     ).toBeInTheDocument();
-    expect(document.activeElement).toBe(
-      screen.getByRole("tab", { name: "数据源" })
-    );
   });
 
   it("底部按钮触发 onClose / onSave", () => {
@@ -108,15 +109,20 @@ describe("SettingsModal tab 布局", () => {
 });
 
 describe("SettingsModal Provider 预设", () => {
-  it("Provider 下拉含全部预设与「自定义」", () => {
+  it("Provider 下拉含全部预设与「自定义」", async () => {
     renderModal();
 
-    const select = screen.getByLabelText(/Provider/) as HTMLSelectElement;
+    // shadcn Select（Radix）：选项渲染在打开后的 listbox 弹层中
+    const trigger = screen.getByLabelText(/Provider/);
+    fireEvent.pointerDown(trigger, { pointerType: "mouse", button: 0 });
+    fireEvent.click(trigger);
     // 内置精选 10 项（无网络环境目录拉取失败回退内置）+ 自定义
-    expect(select.querySelectorAll("option").length).toBe(11);
+    const options = await screen.findAllByRole("option");
+    expect(options.length).toBe(11);
     expect(
       screen.getByRole("option", { name: "Kimi（Moonshot）" })
     ).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "自定义" })).toBeInTheDocument();
   });
 
   it("预设 Provider 时 Model 为手输输入框 + datalist 建议（非强约束下拉）", () => {

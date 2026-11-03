@@ -2,6 +2,7 @@
 
 import React from "react";
 import { MessageSquare, Edit3, Trash2, Check } from "lucide-react";
+import { Hint } from "@/components/ui/hint";
 import type { ChatSession } from "@/lib/sessionStorage";
 
 export function formatSessionTime(timestamp: number): string {
@@ -88,32 +89,38 @@ export function SessionListItem({
       {/* 悬浮操作按钮 */}
       <div className="flex items-center gap-1 shrink-0">
         {isEditing ? (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onSaveRename(session.id);
-            }}
-            className="p-1 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/50 rounded"
-            title="保存"
-          >
-            <Check className="w-3.5 h-3.5" />
-          </button>
+          <Hint label="保存">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onSaveRename(session.id);
+              }}
+              aria-label="保存标题"
+              className="p-1 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/50 rounded"
+            >
+              <Check className="w-3.5 h-3.5" />
+            </button>
+          </Hint>
         ) : (
           <>
-            <button
-              onClick={(e) => onStartRename(e, session)}
-              className="p-1 opacity-0 group-hover:opacity-100 hover:bg-slate-200 dark:hover:bg-slate-700 rounded text-slate-400 hover:text-slate-600 transition-opacity"
-              title="重命名"
-            >
-              <Edit3 className="w-3 h-3" />
-            </button>
-            <button
-              onClick={(e) => onDelete(e, session.id)}
-              className="p-1 opacity-0 group-hover:opacity-100 hover:bg-rose-50 dark:hover:bg-rose-950/60 rounded text-slate-400 hover:text-rose-600 transition-opacity"
-              title="删除会话"
-            >
-              <Trash2 className="w-3 h-3" />
-            </button>
+            <Hint label="重命名">
+              <button
+                onClick={(e) => onStartRename(e, session)}
+                aria-label="重命名会话"
+                className="p-1 opacity-0 group-hover:opacity-100 hover:bg-slate-200 dark:hover:bg-slate-700 rounded text-slate-400 hover:text-slate-600 transition-opacity"
+              >
+                <Edit3 className="w-3 h-3" />
+              </button>
+            </Hint>
+            <Hint label="删除会话">
+              <button
+                onClick={(e) => onDelete(e, session.id)}
+                aria-label="删除会话"
+                className="p-1 opacity-0 group-hover:opacity-100 hover:bg-rose-50 dark:hover:bg-rose-950/60 rounded text-slate-400 hover:text-rose-600 transition-opacity"
+              >
+                <Trash2 className="w-3 h-3" />
+              </button>
+            </Hint>
           </>
         )}
       </div>

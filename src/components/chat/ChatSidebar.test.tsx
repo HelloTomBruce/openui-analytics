@@ -27,8 +27,6 @@ const baseProps = {
   onCancelEdit: vi.fn(),
   onClearAllSessions: vi.fn(),
   onPresetSelect: vi.fn(),
-  onOpenSettings: vi.fn(),
-  onOpenDevTools: vi.fn(),
   onToggleRawLang: vi.fn(),
 };
 

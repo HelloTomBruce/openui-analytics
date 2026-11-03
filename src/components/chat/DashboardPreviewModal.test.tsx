@@ -101,7 +101,8 @@ describe("DashboardPreviewModal 只读预览", () => {
     expect(props.onClose).toHaveBeenCalledTimes(1);
 
     act(() => {
-      fireEvent.keyDown(window, { key: "Escape" });
+      // Radix Dialog 在 document 上监听 Esc
+      fireEvent.keyDown(document, { key: "Escape" });
     });
     expect(props.onClose).toHaveBeenCalledTimes(2);
 

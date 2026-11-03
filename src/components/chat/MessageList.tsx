@@ -4,6 +4,8 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { Message } from "@ai-sdk/react";
 import { ArrowDown, ArrowUp, Loader2, Sparkles, FileCode, Printer, Star } from "lucide-react";
 import { OpenUIRenderer } from "@/components/OpenUIRenderer";
+import { Hint } from "@/components/ui/hint";
+import { Skeleton } from "@/components/ui/skeleton";
 import { extractOpenUI } from "@/lib/extractOpenUI";
 import { toast } from "@/lib/toast";
 import type { FavoriteDashboardInput, FavoriteResult } from "@/hooks/useDashboards";
@@ -195,17 +197,18 @@ const MessageItem = React.memo(function MessageItem({
                     <span>{isFavorited ? "已收藏" : "收藏"}</span>
                   </button>
                 )}
-                <button
-                  type="button"
-                  onClick={() => onPrintDashboard?.(msg.id)}
-                  disabled={isStreaming}
-                  aria-label={`导出 PDF（消息 ${msg.id}）`}
-                  title="打印看板，可在打印对话框中另存为 PDF"
-                  className="flex items-center gap-1 text-[10px] normal-case tracking-normal text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 px-1.5 py-0.5 rounded hover:bg-blue-50 dark:hover:bg-blue-950/50 disabled:opacity-40 disabled:pointer-events-none transition-colors"
-                >
-                  <Printer className="w-3 h-3" />
-                  <span>导出 PDF</span>
-                </button>
+                <Hint label="打印看板，可在打印对话框中另存为 PDF">
+                  <button
+                    type="button"
+                    onClick={() => onPrintDashboard?.(msg.id)}
+                    disabled={isStreaming}
+                    aria-label={`导出 PDF（消息 ${msg.id}）`}
+                    className="flex items-center gap-1 text-[10px] normal-case tracking-normal text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 px-1.5 py-0.5 rounded hover:bg-blue-50 dark:hover:bg-blue-950/50 disabled:opacity-40 disabled:pointer-events-none transition-colors"
+                  >
+                    <Printer className="w-3 h-3" />
+                    <span>导出 PDF</span>
+                  </button>
+                </Hint>
               </div>
             </div>
 
@@ -395,8 +398,8 @@ export function MessageList({
               </span>
             </div>
             <div className="space-y-2 pt-1">
-              <div className="h-3 bg-slate-100 dark:bg-slate-800 rounded-full w-3/4 animate-pulse" />
-              <div className="h-3 bg-slate-100 dark:bg-slate-800 rounded-full w-1/2 animate-pulse" />
+              <Skeleton className="h-3 rounded-full w-3/4" />
+              <Skeleton className="h-3 rounded-full w-1/2" />
             </div>
           </div>
         </div>
@@ -420,24 +423,26 @@ export function MessageList({
       {(!atTop || !atBottom) && (
         <div className="no-print absolute right-4 top-1/2 -translate-y-1/2 z-10 flex flex-col gap-2">
           {!atTop && (
-            <button
-              onClick={() => scrollToEdge(0)}
-              aria-label="回到顶部"
-              title="回到顶部"
-              className="w-7 h-7 rounded-full flex items-center justify-center bg-white/80 dark:bg-slate-900/80 backdrop-blur border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 shadow-md transition-colors"
-            >
-              <ArrowUp className="w-3.5 h-3.5" />
-            </button>
+            <Hint label="回到顶部" side="right">
+              <button
+                onClick={() => scrollToEdge(0)}
+                aria-label="回到顶部"
+                className="w-7 h-7 rounded-full flex items-center justify-center bg-white/80 dark:bg-slate-900/80 backdrop-blur border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 shadow-md transition-colors"
+              >
+                <ArrowUp className="w-3.5 h-3.5" />
+              </button>
+            </Hint>
           )}
           {!atBottom && (
-            <button
-              onClick={scrollToBottom}
-              aria-label="回到底部"
-              title="回到底部（最新消息）"
-              className="w-7 h-7 rounded-full flex items-center justify-center bg-white/80 dark:bg-slate-900/80 backdrop-blur border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 shadow-md transition-colors"
-            >
-              <ArrowDown className="w-3.5 h-3.5" />
-            </button>
+            <Hint label="回到底部（最新消息）" side="right">
+              <button
+                onClick={scrollToBottom}
+                aria-label="回到底部"
+                className="w-7 h-7 rounded-full flex items-center justify-center bg-white/80 dark:bg-slate-900/80 backdrop-blur border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 shadow-md transition-colors"
+              >
+                <ArrowDown className="w-3.5 h-3.5" />
+              </button>
+            </Hint>
           )}
         </div>
       )}

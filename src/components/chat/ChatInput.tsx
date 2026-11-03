@@ -2,6 +2,7 @@
 
 import React from "react";
 import { Send, Loader2, ClipboardList } from "lucide-react";
+import { Hint } from "@/components/ui/hint";
 
 interface ChatInputProps {
   input: string;
@@ -76,20 +77,21 @@ export function ChatInput({
           />
           {/* 底部工具行：左「先出思路」无边框开关，右发送按钮 */}
           <div className="flex items-center justify-between px-3 pb-2.5 pt-1">
-            <button
-              type="button"
-              aria-pressed={planMode}
-              onClick={() => onPlanModeChange(!planMode)}
-              className={`flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium transition-colors select-none cursor-pointer ${
-                planMode
-                  ? "bg-blue-100 dark:bg-blue-950/70 text-blue-700 dark:text-blue-300"
-                  : "text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300"
-              }`}
-              title="开启后，新问题将先探查数据结构并给出分析思路与澄清问题，确认方向后再产出看板"
-            >
-              <ClipboardList className="w-3.5 h-3.5" />
-              <span>先出思路</span>
-            </button>
+            <Hint label="开启后，新问题将先探查数据结构并给出分析思路与澄清问题，确认方向后再产出看板">
+              <button
+                type="button"
+                aria-pressed={planMode}
+                onClick={() => onPlanModeChange(!planMode)}
+                className={`flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium transition-colors select-none cursor-pointer ${
+                  planMode
+                    ? "bg-blue-100 dark:bg-blue-950/70 text-blue-700 dark:text-blue-300"
+                    : "text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300"
+                }`}
+              >
+                <ClipboardList className="w-3.5 h-3.5" />
+                <span>先出思路</span>
+              </button>
+            </Hint>
             <button
               type="submit"
               disabled={isLoading || !input.trim()}

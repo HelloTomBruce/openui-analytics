@@ -1,8 +1,10 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import { X, RefreshCw, Edit3, Trash2, Check, Star, Download, Copy } from "lucide-react";
 import { OpenUIRenderer } from "@/components/OpenUIRenderer";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { Hint } from "@/components/ui/hint";
 // 仅取类型（编译期擦除）
 import type { DashboardRecord } from "@/lib/dashboardStore";
 import { toast } from "@/lib/toast";
@@ -22,8 +24,8 @@ interface DashboardPreviewModalProps {
 }
 
 /**
- * 收藏看板只读预览：全屏 Modal 内以 OpenUIRenderer 渲染快照 DSL。
- * 头部支持行内重命名 / 重新分析 / 删除（二次确认）；Esc 与遮罩点击关闭。
+ * 收藏看板只读预览：全屏 Dialog 内以 OpenUIRenderer 渲染快照 DSL。
+ * 头部支持行内重命名 / 重新分析 / 删除（二次确认）；Esc 与遮罩点击关闭由 Radix Dialog 提供。
  * 交互组件的动作经 onAction 注入输入框（不自动发送），与消息流看板行为区分。
  */
 export function DashboardPreviewModal({
@@ -47,16 +49,6 @@ export function DashboardPreviewModal({
     setConfirmDelete(false);
     setDraft(dashboard.title);
   }
-
-  // Esc 关闭
-  useEffect(() => {
-    if (!dashboard) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [dashboard, onClose]);
 
   if (!dashboard) return null;
 
@@ -92,19 +84,13 @@ export function DashboardPreviewModal({
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-xs p-4 md:p-8"
-      data-testid="dashboard-preview-overlay"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      <div
-        role="dialog"
-        aria-modal="true"
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent
+        showCloseButton={false}
         aria-label={`看板预览：${dashboard.title}`}
-        className="w-full max-w-6xl max-h-full flex flex-col bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden"
+        className="max-w-[calc(100%-2rem)] sm:max-w-6xl max-h-full h-full md:h-auto w-full p-0 gap-0 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden flex flex-col"
       >
+        <DialogTitle className="sr-only">看板预览：{dashboard.title}</DialogTitle>
         {/* 头部：标题（行内重命名）+ 元信息 + 操作 */}
         <div className="flex items-start justify-between gap-3 p-4 border-b border-slate-200 dark:border-slate-800 shrink-0">
           <div className="min-w-0 flex-1">
@@ -133,14 +119,15 @@ export function DashboardPreviewModal({
               <div className="flex items-center gap-2 min-w-0">
                 <Star className="w-4 h-4 text-amber-500 fill-current shrink-0" />
                 <h2 className="font-semibold text-sm truncate">{dashboard.title}</h2>
-                <button
-                  onClick={startRename}
-                  aria-label="重命名看板"
-                  title="重命名"
-                  className="p-1 rounded text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/50 shrink-0"
-                >
-                  <Edit3 className="w-3.5 h-3.5" />
-                </button>
+                <Hint label="重命名">
+                  <button
+                    onClick={startRename}
+                    aria-label="重命名看板"
+                    className="p-1 rounded text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/50 shrink-0"
+                  >
+                    <Edit3 className="w-3.5 h-3.5" />
+                  </button>
+                </Hint>
               </div>
             )}
             <div className="mt-1 flex items-center gap-2 text-[11px] text-slate-400 flex-wrap">
@@ -159,35 +146,40 @@ export function DashboardPreviewModal({
           </div>
 
           <div className="flex items-center gap-1.5 shrink-0">
-            <button
-              onClick={() => onReanalyze(dashboard.prompt)}
-              disabled={!dashboard.prompt}
-              title={
+            <Hint
+              label={
                 dashboard.prompt
                   ? "用原始提问在当前会话重新分析（取最新数据）"
                   : "该收藏未记录原始提问"
               }
-              className="flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg border border-blue-200 dark:border-blue-800 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/50 transition-colors disabled:opacity-40 disabled:pointer-events-none"
             >
-              <RefreshCw className="w-3.5 h-3.5" />
-              <span>重新分析</span>
-            </button>
-            <button
-              onClick={handleExportSnapshot}
-              aria-label="导出快照"
-              title="下载 .openui.json 快照文件（可导入分享）"
-              className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/50 transition-colors"
-            >
-              <Download className="w-4 h-4" />
-            </button>
-            <button
-              onClick={handleCopyDsl}
-              aria-label="复制 DSL"
-              title="复制 OpenUI DSL 到剪贴板（可粘贴到 DevTools 沙盒）"
-              className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/50 transition-colors"
-            >
-              <Copy className="w-4 h-4" />
-            </button>
+              <button
+                onClick={() => onReanalyze(dashboard.prompt)}
+                disabled={!dashboard.prompt}
+                className="flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg border border-blue-200 dark:border-blue-800 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/50 transition-colors disabled:opacity-40 disabled:pointer-events-none"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>重新分析</span>
+              </button>
+            </Hint>
+            <Hint label="下载 .openui.json 快照文件（可导入分享）">
+              <button
+                onClick={handleExportSnapshot}
+                aria-label="导出快照"
+                className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/50 transition-colors"
+              >
+                <Download className="w-4 h-4" />
+              </button>
+            </Hint>
+            <Hint label="复制 OpenUI DSL 到剪贴板（可粘贴到 DevTools 沙盒）">
+              <button
+                onClick={handleCopyDsl}
+                aria-label="复制 DSL"
+                className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/50 transition-colors"
+              >
+                <Copy className="w-4 h-4" />
+              </button>
+            </Hint>
             {confirmDelete ? (
               <button
                 onClick={() => onDelete(dashboard.id)}
@@ -196,23 +188,25 @@ export function DashboardPreviewModal({
                 确认删除
               </button>
             ) : (
-              <button
-                onClick={() => setConfirmDelete(true)}
-                aria-label="删除收藏"
-                title="删除收藏"
-                className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/50 transition-colors"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
+              <Hint label="删除收藏">
+                <button
+                  onClick={() => setConfirmDelete(true)}
+                  aria-label="删除收藏"
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/50 transition-colors"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </Hint>
             )}
-            <button
-              onClick={onClose}
-              aria-label="关闭预览"
-              title="关闭（Esc）"
-              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-            >
-              <X className="w-4 h-4" />
-            </button>
+            <Hint label="关闭（Esc）">
+              <button
+                onClick={onClose}
+                aria-label="关闭预览"
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </Hint>
           </div>
         </div>
 
@@ -224,7 +218,7 @@ export function DashboardPreviewModal({
             onAction={onAction}
           />
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

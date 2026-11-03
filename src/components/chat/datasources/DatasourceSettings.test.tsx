@@ -128,9 +128,8 @@ describe("DatasourceSettings", () => {
     fireEvent.change(screen.getByLabelText(/名称/), { target: { value: "报表库" } });
     fireEvent.click(screen.getByLabelText(/数据库连接/));
     await screen.findByLabelText(/连接串/);
-    fireEvent.change(screen.getByLabelText(/数据库类型/), {
-      target: { value: "postgres" },
-    });
+    // 数据库类型默认 postgres（shadcn Select，受控值由表单状态持有）
+    expect(screen.getByLabelText(/数据库类型/)).toHaveTextContent(/PostgreSQL/);
     fireEvent.change(screen.getByLabelText(/连接串/), {
       target: { value: "postgres://u:p@h:5432/reports" },
     });

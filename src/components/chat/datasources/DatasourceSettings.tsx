@@ -2,6 +2,14 @@
 
 import React, { useState } from "react";
 import { Database, Loader2, Pencil, Plus, Power, Trash2 } from "lucide-react";
+import { Hint } from "@/components/ui/hint";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import type { DataSourceDescriptor } from "@openui-analytics/datasources";
 import { useDatasources } from "./useDatasources";
 import { FileSourcePanel } from "./FileSourcePanel";
@@ -234,29 +242,31 @@ export function DatasourceSettings() {
                 </button>
                 {(
                   <>
-                    <button
-                      onClick={() => openEdit(s)}
-                      disabled={busy}
-                      aria-label={`编辑 ${s.id}`}
-                      className="p-1 rounded text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-50"
-                      title="编辑"
-                    >
-                      <Pencil className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      onClick={() => void remove(s.id)}
-                      disabled={busy}
-                      aria-busy={busyDelete}
-                      aria-label={`删除 ${s.id}`}
-                      className="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-50"
-                      title="删除"
-                    >
-                      {busyDelete ? (
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      ) : (
-                        <Trash2 className="w-3.5 h-3.5" />
-                      )}
-                    </button>
+                    <Hint label="编辑">
+                      <button
+                        onClick={() => openEdit(s)}
+                        disabled={busy}
+                        aria-label={`编辑 ${s.id}`}
+                        className="p-1 rounded text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-50"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
+                    </Hint>
+                    <Hint label="删除">
+                      <button
+                        onClick={() => void remove(s.id)}
+                        disabled={busy}
+                        aria-busy={busyDelete}
+                        aria-label={`删除 ${s.id}`}
+                        className="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-50"
+                      >
+                        {busyDelete ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <Trash2 className="w-3.5 h-3.5" />
+                        )}
+                      </button>
+                    </Hint>
                   </>
                 )}
               </div>
@@ -413,22 +423,26 @@ export function DatasourceSettings() {
                 <label htmlFor="ds-dbtype" className={labelClass}>
                   数据库类型
                 </label>
-                <select
-                  id="ds-dbtype"
+                <Select
                   value={form.dbType}
-                  onChange={(e) =>
-                    setForm({
-                      ...form,
-                      dbType: e.target.value as FormState["dbType"],
-                    })
+                  onValueChange={(v) =>
+                    setForm({ ...form, dbType: v as FormState["dbType"] })
                   }
-                  className={inputClass}
+                  name="ds-dbtype"
                 >
-                  <option value="postgres">PostgreSQL</option>
-                  <option value="mysql">MySQL</option>
-                  <option value="sqlite">SQLite（文件路径）</option>
-                  <option value="clickhouse">ClickHouse</option>
-                </select>
+                  <SelectTrigger
+                    id="ds-dbtype"
+                    className="w-full h-auto py-2.5 text-xs bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800"
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="text-xs">
+                    <SelectItem value="postgres">PostgreSQL</SelectItem>
+                    <SelectItem value="mysql">MySQL</SelectItem>
+                    <SelectItem value="sqlite">SQLite（文件路径）</SelectItem>
+                    <SelectItem value="clickhouse">ClickHouse</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
               <div>
                 <label htmlFor="ds-conn" className={labelClass}>

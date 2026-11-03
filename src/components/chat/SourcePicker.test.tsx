@@ -100,4 +100,27 @@ describe("SourcePicker", () => {
     expect(screen.getByLabelText("PostgreSQL 分析库")).not.toBeChecked();
     expect(screen.getByRole("button", { name: /数据源/ }).textContent).toContain("0/3");
   });
+
+  it("点击行文本（label 区域）与点击复选框本体均恰好切换一次", () => {
+    // 回归守护：label 激活行为会向内部 labelable button 转发一次 click，
+    // 若行上再挂 onClick 会与转发叠加成双切换（取消又勾回，表现为「没反应」）
+    const onChange = vi.fn();
+    const { rerender } = render(
+      <SourcePicker sources={SOURCES} selected={undefined} onChange={onChange} />
+    );
+    fireEvent.click(screen.getByRole("button", { name: /数据源/ }));
+
+    // 点击复选框本体：一次切换
+    fireEvent.click(screen.getByLabelText("Jira MCP"));
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange).toHaveBeenLastCalledWith(["postgres", "mysql-a"]);
+    rerender(
+      <SourcePicker sources={SOURCES} selected={["postgres", "mysql-a"]} onChange={onChange} />
+    );
+
+    // 点击行文本：label 激活行为转发恰好一次 click → 一次切换（重新勾选）
+    fireEvent.click(screen.getByText("Jira MCP"));
+    expect(onChange).toHaveBeenCalledTimes(2);
+    expect(onChange).toHaveBeenLastCalledWith(["postgres", "jira", "mysql-a"]);
+  });
 });

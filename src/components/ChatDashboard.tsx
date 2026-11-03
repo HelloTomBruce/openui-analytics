@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useChat } from "@ai-sdk/react";
 import { TrendingUp, Plus, Code2, Settings, RefreshCw } from "lucide-react";
+import { Hint } from "@/components/ui/hint";
 import { DEFAULT_SANDBOX_CODE } from "@/lib/presetQueries";
 import { upsertMessage } from "@/lib/messages";
 import { useLlmSettings } from "@/hooks/useLlmSettings";
@@ -24,6 +25,13 @@ import { SettingsModal } from "@/components/chat/SettingsModal";
 import { DevToolsPanel } from "@/components/chat/DevToolsPanel";
 import { Toaster } from "@/components/Toaster";
 import { toast } from "@/lib/toast";
+
+/**
+ * AST 沙箱等开发工具仅在 dev 环境露出。
+ * 客户端 bundle 中 NODE_ENV 由构建时静态内联（next dev → development，
+ * next build → production），生产分支整体被 tree-shake。
+ */
+const IS_DEV = process.env.NODE_ENV === "development";
 
 /**
  * 组合层：唯一接线点。
@@ -371,8 +379,6 @@ export default function ChatDashboard() {
         onEditTitleChange={setEditingTitleText}
         onClearAllSessions={handleClearAllSessions}
         onPresetSelect={handlePresetSelect}
-        onOpenSettings={handleOpenSettings}
-        onOpenDevTools={handleOpenDevTools}
         onToggleRawLang={handleToggleRawLang}
         onCancelEdit={handleCancelRename}
       />
@@ -400,13 +406,15 @@ export default function ChatDashboard() {
               <Plus className="w-3.5 h-3.5" />
               <span>新对话</span>
             </button>
-            <button
-              onClick={handleOpenDevTools}
-              className="text-xs text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-950/50 flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-purple-200 dark:border-purple-800"
-            >
-              <Code2 className="w-3.5 h-3.5" />
-              <span>AST 沙箱</span>
-            </button>
+            {IS_DEV && (
+              <button
+                onClick={handleOpenDevTools}
+                className="text-xs text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-950/50 flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-purple-200 dark:border-purple-800"
+              >
+                <Code2 className="w-3.5 h-3.5" />
+                <span>AST 沙箱</span>
+              </button>
+            )}
             <button
               onClick={handleOpenSettings}
               className="text-xs text-slate-600 dark:text-slate-300 hover:text-slate-900 flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800"
@@ -414,13 +422,15 @@ export default function ChatDashboard() {
               <Settings className="w-3.5 h-3.5" />
               <span>设置</span>
             </button>
-            <button
-              onClick={() => window.location.reload()}
-              className="text-xs text-slate-500 hover:text-slate-900 flex items-center gap-1 p-1.5 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800"
-              title="刷新页面"
-            >
-              <RefreshCw className="w-3.5 h-3.5" />
-            </button>
+            <Hint label="刷新页面">
+              <button
+                onClick={() => window.location.reload()}
+                aria-label="刷新页面"
+                className="text-xs text-slate-500 hover:text-slate-900 flex items-center gap-1 p-1.5 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+              </button>
+            </Hint>
           </div>
         </header>
 

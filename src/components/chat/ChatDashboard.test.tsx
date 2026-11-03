@@ -61,7 +61,9 @@ describe("ChatDashboard 守护测试（重构行为锁定）", () => {
   it("渲染侧边栏新建会话按钮与设置入口", () => {
     render(<ChatDashboard />);
     expect(screen.getByText("新建对话会话")).toBeInTheDocument();
-    expect(screen.getByTitle("配置大模型与 MCP")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "设置" })
+    ).toBeInTheDocument();
   });
 
   it("useChat body 透传当前会话 enabledSources", () => {

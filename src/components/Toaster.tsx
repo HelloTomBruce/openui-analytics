@@ -3,6 +3,7 @@
 import React from "react";
 import { useSyncExternalStore } from "react";
 import { CheckCircle2, AlertCircle, Info, X } from "lucide-react";
+import { Hint } from "@/components/ui/hint";
 import {
   dismissToast,
   getToastsSnapshot,
@@ -42,13 +43,15 @@ export function Toaster() {
         >
           {KIND_ICON[t.kind]}
           <span className="flex-1 leading-relaxed">{t.message}</span>
-          <button
-            onClick={() => dismissToast(t.id)}
-            className="shrink-0 opacity-60 hover:opacity-100 transition-opacity"
-            title="关闭"
-          >
-            <X className="w-3 h-3" />
-          </button>
+          <Hint label="关闭">
+            <button
+              onClick={() => dismissToast(t.id)}
+              aria-label="关闭提示"
+              className="shrink-0 opacity-60 hover:opacity-100 transition-opacity"
+            >
+              <X className="w-3 h-3" />
+            </button>
+          </Hint>
         </div>
       ))}
     </div>

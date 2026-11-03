@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Loader2, RefreshCw, Table2 } from "lucide-react";
+import { Hint } from "@/components/ui/hint";
 import { authHeaders } from "@/lib/auth";
 import { toast } from "@/lib/toast";
 import { formatSessionTime } from "../SessionListItem";
@@ -140,19 +141,20 @@ export function SchemaCardStatus({ sourceId }: { sourceId: string }) {
     <div className="flex items-center gap-2 text-[10px] text-slate-400">
       <Table2 className="w-3 h-3 shrink-0" />
       <span className="flex-1 truncate">{label}</span>
-      <button
-        onClick={() => void refresh()}
-        disabled={refreshing}
-        aria-label={`刷新结构卡 ${sourceId}`}
-        title="重新扫描表结构并重建结构卡"
-        className="p-1 rounded text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/50 disabled:opacity-50 transition-colors"
-      >
-        {refreshing ? (
-          <Loader2 className="w-3 h-3 animate-spin" />
-        ) : (
-          <RefreshCw className="w-3 h-3" />
-        )}
-      </button>
+      <Hint label="重新扫描表结构并重建结构卡">
+        <button
+          onClick={() => void refresh()}
+          disabled={refreshing}
+          aria-label={`刷新结构卡 ${sourceId}`}
+          className="p-1 rounded text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/50 disabled:opacity-50 transition-colors"
+        >
+          {refreshing ? (
+            <Loader2 className="w-3 h-3 animate-spin" />
+          ) : (
+            <RefreshCw className="w-3 h-3" />
+          )}
+        </button>
+      </Hint>
     </div>
   );
 }

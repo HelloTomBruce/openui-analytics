@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useMemo, useRef, useState } from "react";
+import { Hint } from "@/components/ui/hint";
 import {
   BarChart3,
   Plus,
@@ -9,8 +10,6 @@ import {
   Search,
   Trash2,
   Bot,
-  Settings,
-  Code2,
   FileCode,
   Sparkles,
   LayoutGrid,
@@ -56,8 +55,6 @@ interface ChatSidebarProps {
   onCancelEdit: () => void;
   onClearAllSessions: () => void;
   onPresetSelect: (preset: string) => void;
-  onOpenSettings: () => void;
-  onOpenDevTools: () => void;
   onToggleRawLang: () => void;
 }
 
@@ -85,8 +82,6 @@ export function ChatSidebar({
   onCancelEdit,
   onClearAllSessions,
   onPresetSelect,
-  onOpenSettings,
-  onOpenDevTools,
   onToggleRawLang,
 }: ChatSidebarProps) {
   const [sidebarTab, setSidebarTab] = useState<
@@ -226,15 +221,16 @@ export function ChatSidebar({
             <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider truncate">
               收藏的看板（服务端存储）
             </div>
-            <button
-              onClick={() => importFileRef.current?.click()}
-              aria-label="导入看板快照"
-              title="导入 .openui.json 快照文件"
-              className="shrink-0 flex items-center gap-1 text-[11px] text-slate-500 hover:text-blue-600 dark:hover:text-blue-400 px-1.5 py-1 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-950/50 transition-colors"
-            >
-              <Upload className="w-3.5 h-3.5" />
-              <span>导入</span>
-            </button>
+            <Hint label="导入 .openui.json 快照文件">
+              <button
+                onClick={() => importFileRef.current?.click()}
+                aria-label="导入看板快照"
+                className="shrink-0 flex items-center gap-1 text-[11px] text-slate-500 hover:text-blue-600 dark:hover:text-blue-400 px-1.5 py-1 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-950/50 transition-colors"
+              >
+                <Upload className="w-3.5 h-3.5" />
+                <span>导入</span>
+              </button>
+            </Hint>
             <input
               ref={importFileRef}
               type="file"
@@ -297,24 +293,9 @@ export function ChatSidebar({
             <Bot className="w-3.5 h-3.5 text-blue-500" />
             <span>{apiKey ? model : "未配置 Key"}</span>
           </div>
-          <button
-            onClick={onOpenSettings}
-            className="p-1 hover:bg-slate-200 dark:hover:bg-slate-800 rounded text-slate-500 hover:text-slate-800"
-            title="配置大模型与 MCP"
-          >
-            <Settings className="w-3.5 h-3.5" />
-          </button>
         </div>
 
         <div className="space-y-1.5 pt-1">
-          <button
-            onClick={onOpenDevTools}
-            className="w-full text-xs p-2 rounded-lg border border-purple-200 dark:border-purple-800 bg-purple-50/60 dark:bg-purple-950/30 text-purple-700 dark:text-purple-300 font-medium transition-colors flex items-center gap-2"
-          >
-            <Code2 className="w-3.5 h-3.5 text-purple-500" />
-            <span>OpenUI 调试工作台 (DevTools)</span>
-          </button>
-
           <button
             onClick={onToggleRawLang}
             className={`w-full text-xs p-2 rounded-lg border transition-colors flex items-center gap-2 ${
@@ -412,42 +393,46 @@ function DashboardListItem({
           className="flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
           onClick={(e) => e.stopPropagation()}
         >
-          <button
-            onClick={() => onPreview(dashboard.id)}
-            aria-label={`查看看板 ${dashboard.title}`}
-            title="查看看板"
-            className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/50"
-          >
-            <Eye className="w-3.5 h-3.5" />
-          </button>
-          <button
-            onClick={() => onReanalyze(dashboard.prompt)}
-            disabled={!dashboard.prompt}
-            aria-label={`重新分析 ${dashboard.title}`}
-            title={dashboard.prompt ? "用原始提问重新分析" : "未记录原始提问"}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/50 disabled:opacity-30 disabled:pointer-events-none"
-          >
-            <RefreshCw className="w-3.5 h-3.5" />
-          </button>
-          <button
-            onClick={() => onExport(dashboard.id)}
-            aria-label={`导出看板 ${dashboard.title}`}
-            title="导出 .openui.json 快照"
-            className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/50"
-          >
-            <Download className="w-3.5 h-3.5" />
-          </button>
-          <button
-            onClick={() => {
-              setDraft(dashboard.title);
-              setEditing(true);
-            }}
-            aria-label={`重命名看板 ${dashboard.title}`}
-            title="重命名"
-            className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/50"
-          >
-            <Edit3 className="w-3.5 h-3.5" />
-          </button>
+          <Hint label="查看看板">
+            <button
+              onClick={() => onPreview(dashboard.id)}
+              aria-label={`查看看板 ${dashboard.title}`}
+              className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/50"
+            >
+              <Eye className="w-3.5 h-3.5" />
+            </button>
+          </Hint>
+          <Hint label={dashboard.prompt ? "用原始提问重新分析" : "未记录原始提问"}>
+            <button
+              onClick={() => onReanalyze(dashboard.prompt)}
+              disabled={!dashboard.prompt}
+              aria-label={`重新分析 ${dashboard.title}`}
+              className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/50 disabled:opacity-30 disabled:pointer-events-none"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+            </button>
+          </Hint>
+          <Hint label="导出 .openui.json 快照">
+            <button
+              onClick={() => onExport(dashboard.id)}
+              aria-label={`导出看板 ${dashboard.title}`}
+              className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/50"
+            >
+              <Download className="w-3.5 h-3.5" />
+            </button>
+          </Hint>
+          <Hint label="重命名">
+            <button
+              onClick={() => {
+                setDraft(dashboard.title);
+                setEditing(true);
+              }}
+              aria-label={`重命名看板 ${dashboard.title}`}
+              className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/50"
+            >
+              <Edit3 className="w-3.5 h-3.5" />
+            </button>
+          </Hint>
           {confirmDelete ? (
             <button
               onClick={() => onDelete(dashboard.id)}
@@ -456,14 +441,15 @@ function DashboardListItem({
               确认
             </button>
           ) : (
-            <button
-              onClick={() => setConfirmDelete(true)}
-              aria-label={`删除看板 ${dashboard.title}`}
-              title="删除收藏"
-              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/50"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-            </button>
+            <Hint label="删除收藏">
+              <button
+                onClick={() => setConfirmDelete(true)}
+                aria-label={`删除看板 ${dashboard.title}`}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/50"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            </Hint>
           )}
         </div>
       )}

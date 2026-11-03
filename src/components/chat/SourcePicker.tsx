@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import { Database, Lock } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 
 export interface PickerSource {
   id: string;
@@ -81,10 +82,12 @@ export function SourcePicker({ sources, selected, onChange, disabled }: SourcePi
               key={s.id}
               className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300 cursor-pointer px-2 py-1.5 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800/60"
             >
-              <input
-                type="checkbox"
+              {/* button 属于 labelable 元素：点击行文本由 label 激活行为转发一次 click，
+                  点击 checkbox 本体浏览器不再转发（target 已是控件）——两条路径均恰好 toggle 一次。
+                  切勿再给行加 onClick：会与 label 转发叠加成双切换（取消又勾回） */}
+              <Checkbox
                 checked={checkedIds.includes(s.id)}
-                onChange={() => toggle(s.id)}
+                onCheckedChange={() => toggle(s.id)}
                 disabled={disabled}
                 aria-label={s.name}
               />

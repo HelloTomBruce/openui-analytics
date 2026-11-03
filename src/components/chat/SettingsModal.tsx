@@ -2,6 +2,28 @@
 
 import React, { useState } from "react";
 import { X, Sliders, Key, Globe, Bot, Database, ChevronDown } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import { Slider } from "@/components/ui/slider";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { DatasourceSettings } from "./datasources/DatasourceSettings";
 import {
   CUSTOM_PROVIDER_ID,
@@ -57,28 +79,21 @@ function EndpointFields({
           <Sliders className="w-3.5 h-3.5" />
           <span>接口协议</span>
         </legend>
-        <div className="flex gap-4" role="radiogroup" aria-label="接口协议">
-          <label className="flex items-center gap-1.5 cursor-pointer">
-            <input
-              type="radio"
-              name="settings-protocol"
-              checked={protocol === "openai"}
-              onChange={() => onProtocolChange("openai")}
-              className="accent-blue-600"
-            />
+        <RadioGroup
+          value={protocol}
+          onValueChange={(v) => onProtocolChange(v as "openai" | "anthropic")}
+          className="flex gap-4"
+          aria-label="接口协议"
+        >
+          <label className="flex items-center gap-1.5 cursor-pointer text-xs">
+            <RadioGroupItem value="openai" />
             <span>OpenAI 兼容</span>
           </label>
-          <label className="flex items-center gap-1.5 cursor-pointer">
-            <input
-              type="radio"
-              name="settings-protocol"
-              checked={protocol === "anthropic"}
-              onChange={() => onProtocolChange("anthropic")}
-              className="accent-blue-600"
-            />
+          <label className="flex items-center gap-1.5 cursor-pointer text-xs">
+            <RadioGroupItem value="anthropic" />
             <span>Anthropic</span>
           </label>
-        </div>
+        </RadioGroup>
       </fieldset>
 
       <div>
@@ -129,29 +144,16 @@ export function SettingsModal({
   // 当前 Provider 预设（custom / 未知 id 时为 undefined → 自由输入形态）
   const preset = presets.find((p) => p.id === providerId);
 
-  // ARIA tab 模式：左右方向键 / Home / End 在 tab 间移动并聚焦
-  const handleTablistKeyDown = (e: React.KeyboardEvent) => {
-    const order = SETTINGS_TABS.map((t) => t.id);
-    const idx = order.indexOf(activeTab);
-    let next: SettingsTab | undefined;
-    if (e.key === "ArrowRight") next = order[(idx + 1) % order.length];
-    else if (e.key === "ArrowLeft") next = order[(idx - 1 + order.length) % order.length];
-    else if (e.key === "Home") next = order[0];
-    else if (e.key === "End") next = order[order.length - 1];
-    if (next) {
-      e.preventDefault();
-      setActiveTab(next);
-      document.getElementById(`settings-tab-${next}`)?.focus();
-    }
-  };
-
   return (
-    <div className="fixed inset-0 bg-slate-950/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-lg p-6 shadow-2xl space-y-4">
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent
+        showCloseButton={false}
+        className="max-w-[calc(100%-2rem)] sm:max-w-2xl rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 gap-4 text-xs"
+      >
         <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
           <div className="flex items-center gap-2">
             <Sliders className="w-5 h-5 text-blue-500" />
-            <h3 className="font-bold text-sm">设置</h3>
+            <DialogTitle className="font-bold text-sm">设置</DialogTitle>
           </div>
           <button
             onClick={onClose}
@@ -162,59 +164,50 @@ export function SettingsModal({
           </button>
         </div>
 
-        <div
-          role="tablist"
-          aria-label="设置分类"
-          onKeyDown={handleTablistKeyDown}
-          className="flex bg-slate-100 dark:bg-slate-800/70 p-1 rounded-lg text-xs font-medium"
+        <Tabs
+          value={activeTab}
+          onValueChange={(v) => setActiveTab(v as SettingsTab)}
+          className="gap-4"
         >
-          {SETTINGS_TABS.map(({ id, label, Icon }) => (
-            <button
-              key={id}
-              role="tab"
-              id={`settings-tab-${id}`}
-              aria-selected={activeTab === id}
-              aria-controls={`settings-panel-${id}`}
-              tabIndex={activeTab === id ? 0 : -1}
-              onClick={() => setActiveTab(id)}
-              className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md transition-all ${
-                activeTab === id
-                  ? "bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-xs font-semibold"
-                  : "text-slate-500 hover:text-slate-900 dark:hover:text-slate-200"
-              }`}
-            >
-              <Icon className="w-3.5 h-3.5" />
-              <span>{label}</span>
-            </button>
-          ))}
-        </div>
+          <TabsList className="w-full h-auto p-1 text-xs font-medium bg-slate-100 dark:bg-slate-800/70">
+            {SETTINGS_TABS.map(({ id, label, Icon }) => (
+              <TabsTrigger
+                key={id}
+                value={id}
+                className="flex-1 h-auto py-1.5 gap-1.5 text-xs data-active:font-semibold data-active:text-blue-600 dark:data-active:text-blue-400 data-active:bg-white dark:data-active:bg-slate-900 data-active:shadow-xs"
+              >
+                <Icon className="w-3.5 h-3.5" />
+                <span>{label}</span>
+              </TabsTrigger>
+            ))}
+          </TabsList>
 
-        {activeTab === "model" && (
-          <div
-            role="tabpanel"
-            id="settings-panel-model"
-            aria-labelledby="settings-tab-model"
-            className="space-y-3 text-xs"
-          >
+          <TabsContent value="model" className="space-y-3 text-xs mt-0">
             <div>
               <label htmlFor="settings-provider" className="block text-slate-500 mb-1 font-medium flex items-center gap-1">
                 <Bot className="w-3.5 h-3.5" />
                 <span>Provider{loading && <span className="text-slate-400 font-normal">（目录同步中…）</span>}</span>
               </label>
-              <div className="relative">
-                <select
+              <Select
+                value={providerId}
+                onValueChange={onProviderChange}
+                name="settings-provider"
+              >
+                <SelectTrigger
                   id="settings-provider"
-                  value={providerId}
-                  onChange={(e) => onProviderChange(e.target.value)}
-                  className="w-full appearance-none p-2.5 pr-8 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 font-medium"
+                  className="w-full h-auto py-2.5 text-xs font-medium bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800"
                 >
-                  <optgroup label="常用">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="text-xs max-h-72">
+                  <SelectGroup>
+                    <SelectLabel>常用</SelectLabel>
                     {LLM_PROVIDER_PRESETS.map((p) => (
-                      <option key={p.id} value={p.id}>
+                      <SelectItem key={p.id} value={p.id}>
                         {p.name}
-                      </option>
+                      </SelectItem>
                     ))}
-                  </optgroup>
+                  </SelectGroup>
                   {(() => {
                     const builtinIds = new Set(
                       LLM_PROVIDER_PRESETS.map((p) => p.id)
@@ -222,19 +215,19 @@ export function SettingsModal({
                     const rest = presets.filter((p) => !builtinIds.has(p.id));
                     if (!rest.length) return null;
                     return (
-                      <optgroup label="全部 Provider（models.dev 目录）">
+                      <SelectGroup>
+                        <SelectLabel>全部 Provider（models.dev 目录）</SelectLabel>
                         {rest.map((p) => (
-                          <option key={p.id} value={p.id}>
+                          <SelectItem key={p.id} value={p.id}>
                             {p.name}
-                          </option>
+                          </SelectItem>
                         ))}
-                      </optgroup>
+                      </SelectGroup>
                     );
                   })()}
-                  <option value={CUSTOM_PROVIDER_ID}>自定义</option>
-                </select>
-                <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-              </div>
+                  <SelectItem value={CUSTOM_PROVIDER_ID}>自定义</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
             <div>
@@ -276,21 +269,22 @@ export function SettingsModal({
             </div>
 
             {preset ? (
-              <details className="group rounded-lg border border-slate-100 dark:border-slate-800">
-                <summary className="cursor-pointer select-none px-2.5 py-2 text-slate-500 font-medium flex items-center gap-1">
+              <Collapsible className="rounded-lg border border-slate-100 dark:border-slate-800">
+                <CollapsibleTrigger className="group w-full cursor-pointer select-none px-2.5 py-2 text-slate-500 font-medium flex items-center gap-1">
                   <Globe className="w-3.5 h-3.5" />
                   <span>高级：协议与接口地址</span>
-                  <ChevronDown className="w-3.5 h-3.5 ml-auto transition-transform group-open:rotate-180" />
-                </summary>
-                <div className="px-2.5 pb-2.5 space-y-3">
+                  <ChevronDown className="w-3.5 h-3.5 ml-auto transition-transform group-data-open:rotate-180" />
+                </CollapsibleTrigger>
+                {/* forceMount：折叠时字段保持挂载（与原 details 行为一致），hidden 由 Radix 控制 */}
+                <CollapsibleContent forceMount className="px-2.5 pb-2.5 space-y-3 data-closed:hidden">
                   <EndpointFields
                     protocol={protocol}
                     baseURL={baseURL}
                     onProtocolChange={onProtocolChange}
                     onBaseURLChange={onBaseURLChange}
                   />
-                </div>
-              </details>
+                </CollapsibleContent>
+              </Collapsible>
             ) : (
               <div className="space-y-3">
                 <EndpointFields
@@ -307,15 +301,14 @@ export function SettingsModal({
                 <span>Temperature（0–2，数据分析建议 0.2）</span>
                 <span className="font-mono text-slate-400">{temperature}</span>
               </label>
-              <input
+              <Slider
                 id="settings-temperature"
-                type="range"
-                min="0"
-                max="2"
-                step="0.1"
-                value={temperature}
-                onChange={(e) => onTemperatureChange(e.target.value)}
-                className="w-full accent-blue-600"
+                value={[Number(temperature) || 0]}
+                min={0}
+                max={2}
+                step={0.1}
+                onValueChange={([v]) => onTemperatureChange(String(v))}
+                className="w-full"
               />
             </div>
 
@@ -351,19 +344,15 @@ export function SettingsModal({
                 className="w-full p-2.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 font-mono"
               />
             </div>
-          </div>
-        )}
+          </TabsContent>
 
-        {activeTab === "datasources" && (
-          <div
-            role="tabpanel"
-            id="settings-panel-datasources"
-            aria-labelledby="settings-tab-datasources"
-            className="max-h-[60vh] overflow-y-auto pr-0.5"
+          <TabsContent
+            value="datasources"
+            className="max-h-[60vh] overflow-y-auto pr-0.5 mt-0"
           >
             <DatasourceSettings />
-          </div>
-        )}
+          </TabsContent>
+        </Tabs>
 
         <div className="flex justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
           <button
@@ -379,7 +368,7 @@ export function SettingsModal({
             保存配置
           </button>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
