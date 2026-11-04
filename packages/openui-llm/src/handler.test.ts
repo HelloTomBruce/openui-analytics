@@ -1,11 +1,11 @@
 // @vitest-environment node
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { createAnalyzeHandler } from "./handler";
+import { createAnalyzeHandler, type SessionContextStore } from "./handler";
 import type {
   DatasourceManager,
   McpToolBinding,
 } from "@openui-analytics/datasources";
-import { streamText } from "ai";
+import { streamText, generateText } from "ai";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -62,6 +62,7 @@ vi.mock("ai", async (importOriginal) => {
   return {
     ...actual,
     streamText: vi.fn(),
+    generateText: vi.fn(),
   };
 });
 
@@ -473,5 +474,203 @@ describe("createAnalyzeHandler 方法论注入", () => {
     );
     sys = vi.mocked(streamText).mock.calls[1][0].system as string;
     expect(sys).toContain("### Method dora · DORA 效能分析");
+  });
+});
+
+describe("createAnalyzeHandler 上下文治理", () => {
+  const savedEnv: Record<string, string | undefined> = {};
+  let POST: (req: Request) => Promise<Response>;
+  let getContext: ReturnType<
+    typeof vi.fn<SessionContextStore["getContext"]>
+  >;
+  let updateContext: ReturnType<
+    typeof vi.fn<SessionContextStore["updateContext"]>
+  >;
+
+  const toolResultMsg = (toolName: string, len: number, id: string) => ({
+    role: "tool",
+    content: [
+      { type: "tool-result", toolCallId: id, toolName, result: "x".repeat(len) },
+    ],
+  });
+
+  beforeEach(async () => {
+    for (const key of ["OPENAI_API_KEY", "LLM_API_KEY", "OPENAI_BASE_URL", "LLM_BASE_URL", "OPENAI_MODEL", "LLM_MODEL"]) {
+      savedEnv[key] = process.env[key];
+      delete process.env[key];
+    }
+    mockStreamOk();
+    getContext = vi.fn(async () => undefined);
+    updateContext = vi.fn(async () => {});
+    POST = createAnalyzeHandler({
+      datasources: await makeFakeManager(),
+      sessions: { getContext, updateContext },
+    });
+  });
+
+  afterEach(() => {
+    for (const [key, value] of Object.entries(savedEnv)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    vi.clearAllMocks();
+  });
+
+  it("小历史：消息原样透传（直发路径）", async () => {
+    const messages = [
+      { role: "user", content: "分析 CAC" },
+      { role: "assistant", content: "好的" },
+    ];
+    await POST(
+      makeRequest({ messages, apiKey: "k", sessionId: "sess_ab12cd34" })
+    );
+    const sent = vi.mocked(streamText).mock.calls[0][0].messages;
+    expect(sent).toEqual(messages);
+  });
+
+  it("onFinish：实测 promptTokens 回写会话元数据（token 锚点）", async () => {
+    await POST(
+      makeRequest({
+        messages: [{ role: "user", content: "hi" }],
+        apiKey: "k",
+        sessionId: "sess_ab12cd34",
+      })
+    );
+    const onFinish = vi.mocked(streamText).mock.calls[0][0].onFinish as (
+      arg: unknown
+    ) => void;
+    onFinish({ usage: { promptTokens: 12345, completionTokens: 10 } });
+    expect(updateContext).toHaveBeenCalledWith("sess_ab12cd34", {
+      lastPromptTokens: 12345,
+    });
+  });
+
+  it("无 sessionId：治理降级，不读写会话元数据", async () => {
+    await POST(
+      makeRequest({ messages: [{ role: "user", content: "hi" }], apiKey: "k" })
+    );
+    expect(getContext).not.toHaveBeenCalled();
+    const onFinish = vi.mocked(streamText).mock.calls[0][0].onFinish as (
+      arg: unknown
+    ) => void;
+    onFinish({ usage: { promptTokens: 123 } });
+    expect(updateContext).not.toHaveBeenCalled();
+  });
+
+  it("超阈值：窗口外 tool 结果裁剪为占位符，用户消息不动", async () => {
+    // contextWindow=16384 + maxTokens=1024 → triggerAt=7168（夹具总量 ~7300+）
+    const messages = [
+      { role: "user", content: "分析 CAC" },
+      toolResultMsg("execute_sql", 6000, "c1"),
+      toolResultMsg("describe_table", 6000, "c2"),
+      { role: "assistant", content: "中间结论" },
+      { role: "user", content: "y".repeat(6000) },
+      toolResultMsg("list_tables", 2000, "c3"),
+      { role: "user", content: "继续" },
+    ];
+    await POST(
+      makeRequest({
+        messages,
+        apiKey: "k",
+        sessionId: "sess_ab12cd34",
+        contextWindow: 16384,
+        maxTokens: 1024,
+      })
+    );
+    const sent = vi.mocked(streamText).mock.calls[0][0].messages as {
+      role: string;
+      content: { result?: string }[] | string;
+    }[];
+    const pruned = sent[1].content as { result: string }[];
+    expect(pruned[0].result).toBe("[已裁剪: execute_sql]");
+    // 用户消息原样
+    expect(sent[0].content).toBe("分析 CAC");
+    // 无摘要触发时 system 不含摘要段
+    const sys = vi.mocked(streamText).mock.calls[0][0].system as string;
+    expect(sys).not.toContain("此前会话摘要");
+  });
+
+  it("pruning 不足：触发 LLM 摘要并缓存；命中缓存不再生成", async () => {
+    // 大量不可裁剪 user 消息：pruning 无效 → 摘要兜底
+    const messages = [
+      ...Array.from({ length: 6 }, (_, i) => ({
+        id: `u${i}`,
+        role: "user",
+        content: "u".repeat(7000) + i,
+      })),
+      { id: "latest", role: "user", content: "最新问题" },
+    ];
+    vi.mocked(generateText).mockResolvedValueOnce({
+      text: " 缓存摘要内容 ",
+    } as unknown as Awaited<ReturnType<typeof generateText>>);
+
+    await POST(
+      makeRequest({
+        messages,
+        apiKey: "k",
+        sessionId: "sess_ab12cd34",
+        contextWindow: 16384,
+        maxTokens: 1024,
+      })
+    );
+    expect(generateText).toHaveBeenCalledTimes(1);
+    const sys = vi.mocked(streamText).mock.calls[0][0].system as string;
+    expect(sys).toContain("此前会话摘要");
+    expect(sys).toContain("缓存摘要内容");
+    // 摘要缓存写回（游标 = 覆盖区间末条消息 id）
+    expect(updateContext).toHaveBeenCalledWith(
+      "sess_ab12cd34",
+      expect.objectContaining({ summary: "缓存摘要内容" })
+    );
+    // 摘要裁剪后消息数减少且首条为 user
+    const sent = vi.mocked(streamText).mock.calls[0][0].messages as {
+      role: string;
+    }[];
+    expect(sent.length).toBeLessThan(messages.length);
+    expect(sent[0].role).toBe("user");
+
+    // 第二次：摘要游标命中缓存 → 不再调用 generateText
+    const coveredMarker = (
+      updateContext.mock.calls[0][1] as { summaryUptoMessageId: string }
+    ).summaryUptoMessageId;
+    getContext.mockResolvedValueOnce({
+      summary: "缓存摘要内容",
+      summaryUptoMessageId: coveredMarker,
+    });
+    await POST(
+      makeRequest({
+        messages,
+        apiKey: "k",
+        sessionId: "sess_ab12cd34",
+        contextWindow: 16384,
+        maxTokens: 1024,
+      })
+    );
+    expect(generateText).toHaveBeenCalledTimes(1); // 未新增调用
+    const sys2 = vi.mocked(streamText).mock.calls[1][0].system as string;
+    expect(sys2).toContain("缓存摘要内容");
+  });
+
+  it("摘要生成失败：退化为 pruning 投影，不阻塞分析", async () => {
+    const messages = [
+      ...Array.from({ length: 6 }, (_, i) => ({
+        role: "user",
+        content: "u".repeat(7000) + i,
+      })),
+      { role: "user", content: "最新问题" },
+    ];
+    vi.mocked(generateText).mockRejectedValueOnce(new Error("llm down"));
+    const res = await POST(
+      makeRequest({
+        messages,
+        apiKey: "k",
+        sessionId: "sess_ab12cd34",
+        contextWindow: 16384,
+        maxTokens: 1024,
+      })
+    );
+    expect(res.status).toBe(200);
+    const sys = vi.mocked(streamText).mock.calls[0][0].system as string;
+    expect(sys).not.toContain("此前会话摘要");
   });
 });

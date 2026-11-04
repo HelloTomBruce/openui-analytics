@@ -79,36 +79,46 @@ describe("ChatSidebar 看板库 tab", () => {
     expect(props.onPreviewDashboard).toHaveBeenCalledWith("dash_ab12cd34");
   });
 
-  it("重新分析按钮携带 prompt 且不冒泡触发预览", () => {
+  /** 打开看板卡片的「...」菜单（其余操作均收纳其中） */
+  function openItemMenu() {
+    fireEvent.click(
+      screen.getByRole("button", { name: /看板 Bug 收敛漏斗 更多操作/ })
+    );
+  }
+
+  it("重新分析收纳在菜单中：携带 prompt 且不冒泡触发预览", () => {
     const props = { ...baseProps, dashboards: [SUMMARY] };
     render(<ChatSidebar {...props} />);
     switchToDashboards();
 
-    fireEvent.click(screen.getByRole("button", { name: /重新分析 Bug 收敛漏斗/ }));
+    openItemMenu();
+    fireEvent.click(screen.getByRole("menuitem", { name: /重新分析 Bug 收敛漏斗/ }));
     expect(props.onReanalyzeDashboard).toHaveBeenCalledWith(
       "本迭代 Bug 收敛情况如何"
     );
     expect(props.onPreviewDashboard).not.toHaveBeenCalled();
   });
 
-  it("无 prompt 的条目重新分析按钮禁用", () => {
+  it("无 prompt 的条目菜单中重新分析禁用", () => {
     const props = {
       ...baseProps,
       dashboards: [{ ...SUMMARY, prompt: undefined }],
     };
     render(<ChatSidebar {...props} />);
     switchToDashboards();
+    openItemMenu();
     expect(
-      screen.getByRole("button", { name: /重新分析 Bug 收敛漏斗/ })
+      screen.getByRole("menuitem", { name: /重新分析 Bug 收敛漏斗/ })
     ).toBeDisabled();
   });
 
-  it("行内重命名：编辑 → 保存调用 onRenameDashboard", () => {
+  it("行内重命名：菜单进入编辑 → 保存调用 onRenameDashboard", () => {
     const props = { ...baseProps, dashboards: [SUMMARY] };
     render(<ChatSidebar {...props} />);
     switchToDashboards();
 
-    fireEvent.click(screen.getByRole("button", { name: /重命名看板 Bug 收敛漏斗/ }));
+    openItemMenu();
+    fireEvent.click(screen.getByRole("menuitem", { name: /重命名看板 Bug 收敛漏斗/ }));
     const input = screen.getByRole("textbox", { name: /重命名看板 Bug 收敛漏斗/ });
     fireEvent.change(input, { target: { value: "月度报告" } });
     fireEvent.keyDown(input, { key: "Enter" });
@@ -118,26 +128,58 @@ describe("ChatSidebar 看板库 tab", () => {
     );
   });
 
-  it("删除走行内二次确认，且不冒泡", () => {
+  it("删除在菜单内二次确认，且不冒泡", () => {
     const props = { ...baseProps, dashboards: [SUMMARY] };
     render(<ChatSidebar {...props} />);
     switchToDashboards();
 
-    fireEvent.click(screen.getByRole("button", { name: /删除看板 Bug 收敛漏斗/ }));
+    openItemMenu();
+    fireEvent.click(screen.getByRole("menuitem", { name: /删除看板 Bug 收敛漏斗/ }));
     expect(props.onDeleteDashboard).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "确认" }));
+    fireEvent.click(
+      screen.getByRole("menuitem", { name: /确认删除看板 Bug 收敛漏斗/ })
+    );
     expect(props.onDeleteDashboard).toHaveBeenCalledWith("dash_ab12cd34");
     expect(props.onPreviewDashboard).not.toHaveBeenCalled();
   });
 
-  it("条目导出按钮触发 onExportDashboard 且不冒泡", () => {
+  it("条目导出收纳在菜单中：触发 onExportDashboard 且不冒泡", () => {
     const props = { ...baseProps, dashboards: [SUMMARY] };
     render(<ChatSidebar {...props} />);
     switchToDashboards();
 
-    fireEvent.click(screen.getByRole("button", { name: /导出看板 Bug 收敛漏斗/ }));
+    openItemMenu();
+    fireEvent.click(screen.getByRole("menuitem", { name: /导出看板 Bug 收敛漏斗/ }));
     expect(props.onExportDashboard).toHaveBeenCalledWith("dash_ab12cd34");
     expect(props.onPreviewDashboard).not.toHaveBeenCalled();
+  });
+
+  it("菜单交互：菜单外点击关闭；Escape 关闭；确认态随关闭复位", () => {
+    const props = { ...baseProps, dashboards: [SUMMARY] };
+    render(<ChatSidebar {...props} />);
+    switchToDashboards();
+
+    // 打开菜单 → 菜单外点击关闭
+    openItemMenu();
+    expect(screen.getByRole("menu")).toBeInTheDocument();
+    fireEvent.mouseDown(document.body);
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+
+    // 再次打开 → Escape 关闭
+    openItemMenu();
+    expect(screen.getByRole("menu")).toBeInTheDocument();
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+
+    // 删除确认态随菜单关闭复位（重开后仍是「删除收藏」而非「确认删除」）
+    openItemMenu();
+    fireEvent.click(screen.getByRole("menuitem", { name: /删除看板 Bug 收敛漏斗/ }));
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    openItemMenu();
+    expect(
+      screen.getByRole("menuitem", { name: /删除看板 Bug 收敛漏斗/ })
+    ).toBeInTheDocument();
+    expect(props.onDeleteDashboard).not.toHaveBeenCalled();
   });
 
   it("导入：选择文件后回调 onImportDashboard，且可重复选择同一文件", () => {

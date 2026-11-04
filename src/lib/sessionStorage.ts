@@ -13,6 +13,25 @@ export interface ChatSession {
 const STORAGE_SESSIONS_KEY = "openui_chat_sessions_v1";
 const STORAGE_CURRENT_SESSION_ID_KEY = "openui_current_session_id_v1";
 
+/**
+ * @deprecated v2 起会话由服务端存储（/api/sessions），本模块仅保留：
+ * DEFAULT_WELCOME_MESSAGE / generateSessionTitle 等纯函数，以及供
+ * sessionApi.migrateLegacySessions 一次性迁移读取的旧键访问。
+ * 新代码请勿再读写 localStorage 会话键。
+ */
+export const LEGACY_STORAGE_KEYS = [
+  STORAGE_SESSIONS_KEY,
+  STORAGE_CURRENT_SESSION_ID_KEY,
+] as const;
+
+/** 迁移成功后清除旧 localStorage 会话键（幂等） */
+export function clearLegacySessions(): void {
+  if (typeof window === "undefined") return;
+  for (const key of LEGACY_STORAGE_KEYS) {
+    localStorage.removeItem(key);
+  }
+}
+
 export const DEFAULT_WELCOME_MESSAGE: Message = {
   id: "welcome",
   role: "assistant",

@@ -1,4 +1,13 @@
-import { streamText, tool, jsonSchema, type CoreMessage, type CoreTool } from "ai";
+import { streamText, generateText, tool, jsonSchema, type CoreMessage, type CoreTool } from "ai";
+import {
+  computeBudget,
+  estimateTextTokens,
+  projectMessages,
+  resolveContextWindow,
+  trimAfterSummaryCut,
+  buildSummaryPrompt,
+  SUMMARY_MAX_TOKENS,
+} from "./context";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import {
@@ -86,6 +95,23 @@ export function buildMethodDetailsFromMessages(
   return matched.length > 0 ? matched.join("\n\n") : undefined;
 }
 
+/** 会话上下文元数据（投影式压缩的锚点与摘要缓存；与应用层 SessionContextMeta 同构） */
+export interface SessionContextMeta {
+  lastPromptTokens?: number;
+  summary?: string;
+  summaryUptoMessageId?: string;
+}
+
+/**
+ * 会话上下文存取（可选注入）：缺省时上下文治理退化为「仅当次启发式估算」
+ * （无跨轮锚点、无摘要缓存；pruning 仍生效）。
+ */
+export interface SessionContextStore {
+  getContext(sessionId: string): Promise<SessionContextMeta | undefined>;
+  /** 增量合并语义（只更新 patch 中出现的字段） */
+  updateContext(sessionId: string, patch: SessionContextMeta): Promise<void>;
+}
+
 export interface AnalyzeHandlerOptions {
   /** 应用持有的数据源单例（src/lib/datasources.ts），包不自建 */
   datasources: DatasourceManager;
@@ -94,6 +120,8 @@ export interface AnalyzeHandlerOptions {
    * 的组件名一致性校验守护）；应用层可注入「内置 + 用户卡/业务包卡」合并库。
    */
   methodology?: MethodLibrary;
+  /** 会话上下文存取（可选注入；应用层为 src/lib/sessionStore 的适配器） */
+  sessions?: SessionContextStore;
 }
 
 export interface AnalyzeRequestBody {
@@ -119,6 +147,10 @@ export interface AnalyzeRequestBody {
    * - execute：执行阶段——按历史中已确认的规划产出完整看板
    */
   mode?: "direct" | "plan" | "execute";
+  /** 会话 id（上下文治理：读取/回写计量锚点与摘要缓存；缺省则治理降级） */
+  sessionId?: string;
+  /** 客户端提供的模型窗口 hint（provider catalog 值；缺省服务端查表） */
+  contextWindow?: number | string;
   /** 历史透传字段（如 gitlabUrl/gitlabToken）被忽略的现状保持 */
   [key: string]: unknown;
 }
@@ -128,7 +160,7 @@ export interface AnalyzeRequestBody {
  * 逻辑与原 app/api/analyze/route.ts 逐行等价（仅依赖来源改为注入）。
  */
 export function createAnalyzeHandler(opts: AnalyzeHandlerOptions) {
-  const { datasources } = opts;
+  const { datasources, sessions } = opts;
 
   // 方法论库：注入或缺省内置；索引文本在工厂期渲染一次（库不变无需逐请求重算）
   const methodLibrary: MethodLibrary =
@@ -148,6 +180,8 @@ export function createAnalyzeHandler(opts: AnalyzeHandlerOptions) {
         sources: clientSources,
         protocol: clientProtocol,
         mode: clientMode,
+        sessionId: clientSessionId,
+        contextWindow: clientContextWindow,
       } = (await req.json()) as AnalyzeRequestBody;
 
       const apiKey = clientKey || process.env.OPENAI_API_KEY || process.env.LLM_API_KEY;
@@ -258,18 +292,100 @@ export function createAnalyzeHandler(opts: AnalyzeHandlerOptions) {
         mode === "execute"
           ? buildMethodDetailsFromMessages(methodLibrary, messages)
           : undefined;
-      const system =
+      const baseSystem =
         mode === "plan"
           ? getOpenUIPlanPrompt(summaries, schemaDigest, methodIndexText)
           : mode === "execute"
             ? getExecuteSystemPrompt(summaries, schemaDigest, methodDetails)
             : getOpenUISystemPrompt(summaries, schemaDigest, methodIndexText);
 
+      // ========== 上下文治理（投影式压缩，设计见 context.ts） ==========
+      // 会话元数据读取失败静默降级（仅当次启发式，不阻塞分析）
+      const sessionCtx =
+        sessions && typeof clientSessionId === "string" && clientSessionId
+          ? await sessions.getContext(clientSessionId).catch(() => undefined)
+          : undefined;
+      const contextWindow = resolveContextWindow(model, clientContextWindow);
+      const budget = computeBudget(contextWindow, maxOutputTokens);
+      const projection = projectMessages({
+        messages: messages as CoreMessage[],
+        budget,
+        anchorTokens: sessionCtx?.lastPromptTokens,
+        systemTokens: estimateTextTokens(baseSystem),
+      });
+
+      let system = baseSystem;
+      let projectedMessages = projection.messages;
+      if (projection.summarizeUpToIndex >= 0) {
+        const covered = projection.messages.slice(
+          0,
+          projection.summarizeUpToIndex + 1
+        );
+        const lastCovered = covered[covered.length - 1] as
+          | { id?: unknown }
+          | undefined;
+        // 游标优先用消息 id；CoreMessage 无 id 时退化为下标标记（单调递增语义）
+        const marker =
+          typeof lastCovered?.id === "string"
+            ? (lastCovered.id as string)
+            : `index:${projection.summarizeUpToIndex}`;
+        let summary =
+          sessionCtx?.summaryUptoMessageId === marker
+            ? sessionCtx.summary
+            : undefined;
+        if (!summary) {
+          try {
+            const generated = await generateText({
+              model: languageModel,
+              maxTokens: SUMMARY_MAX_TOKENS,
+              temperature: 0,
+              messages: [
+                {
+                  role: "user",
+                  content: buildSummaryPrompt({
+                    covered,
+                    previousSummary: sessionCtx?.summary,
+                  }),
+                },
+              ],
+            });
+            summary = generated.text.trim();
+            if (summary && sessions && typeof clientSessionId === "string") {
+              await sessions
+                .updateContext(clientSessionId, {
+                  summary,
+                  summaryUptoMessageId: marker,
+                })
+                .catch(() => {});
+            }
+          } catch (err) {
+            // 摘要失败不阻塞分析：退化为 pruning 投影（模型端溢出由压缩恢复语义兜底）
+            console.warn("[上下文治理] 摘要生成失败，退化为 pruning 投影:", err);
+          }
+        }
+        if (summary) {
+          system = `${baseSystem}\n\n## 此前会话摘要\n${summary}`;
+          projectedMessages = trimAfterSummaryCut(
+            projection.messages.slice(projection.summarizeUpToIndex + 1)
+          );
+        }
+      }
+      if (projection.pruned || projection.summarizeUpToIndex >= 0) {
+        console.log("[上下文治理]", {
+          estimated: projection.estimatedPromptTokens,
+          triggerAt: budget.triggerAt,
+          pruned: projection.prunedCount,
+          summarized: projection.summarizeUpToIndex >= 0,
+          before: (messages as CoreMessage[]).length,
+          after: projectedMessages.length,
+        });
+      }
+
       const result = streamText({
         model: languageModel,
         system,
-        // 客户端消息体原样透传（与原实现一致，不做结构校验）
-        messages: messages as CoreMessage[],
+        // 投影后的消息（存储层历史不动；无治理需求时与入参一致）
+        messages: projectedMessages,
         temperature,
         // AI SDK v1 参数名为 maxTokens（透传 max_tokens；Anthropic 端点必填）
         maxTokens: maxOutputTokens,
@@ -297,6 +413,21 @@ export function createAnalyzeHandler(opts: AnalyzeHandlerOptions) {
         maxSteps: mode === "plan" ? 6 : 10,
         onStepFinish({ stepType, toolCalls, text, finishReason }) {
           console.log(`[Vercel AI SDK Step Finish] type=${stepType}, finishReason=${finishReason}, toolCalls=${toolCalls?.length || 0}, textLength=${text?.length || 0}`);
+        },
+        // token 锚点回写：实测 promptTokens 是下次估算的校准基线（fire-and-forget）
+        onFinish({ usage }) {
+          if (
+            sessions &&
+            typeof clientSessionId === "string" &&
+            clientSessionId &&
+            usage?.promptTokens
+          ) {
+            void sessions
+              .updateContext(clientSessionId, {
+                lastPromptTokens: usage.promptTokens,
+              })
+              .catch(() => {});
+          }
         },
       });
 

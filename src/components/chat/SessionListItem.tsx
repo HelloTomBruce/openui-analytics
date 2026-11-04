@@ -3,7 +3,7 @@
 import React from "react";
 import { MessageSquare, Edit3, Trash2, Check } from "lucide-react";
 import { Hint } from "@/components/ui/hint";
-import type { ChatSession } from "@/lib/sessionStorage";
+import type { SessionSummary } from "@/lib/sessionStore";
 
 export function formatSessionTime(timestamp: number): string {
   const diffMs = Math.max(0, Date.now() - timestamp);
@@ -22,12 +22,12 @@ export function formatSessionTime(timestamp: number): string {
 }
 
 interface SessionListItemProps {
-  session: ChatSession;
+  session: SessionSummary;
   isActive: boolean;
   isEditing: boolean;
   editingTitleText: string;
   onSelect: (sessionId: string) => void;
-  onStartRename: (e: React.MouseEvent, session: ChatSession) => void;
+  onStartRename: (e: React.MouseEvent, session: SessionSummary) => void;
   onSaveRename: (sessionId: string) => void;
   onDelete: (e: React.MouseEvent, sessionId: string) => void;
   onEditTitleChange: (text: string) => void;
@@ -80,7 +80,7 @@ export function SessionListItem({
             <div className="text-[10px] text-slate-400 mt-0.5 flex items-center gap-1.5">
               <span>{formatSessionTime(session.updatedAt)}</span>
               <span>•</span>
-              <span>{session.messages?.length || 1} 条消息</span>
+              <span>{session.messageCount ?? 1} 条消息</span>
             </div>
           </div>
         )}

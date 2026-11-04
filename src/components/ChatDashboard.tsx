@@ -3,8 +3,10 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useChat } from "@ai-sdk/react";
 import { TrendingUp, Plus, Code2, Settings, RefreshCw } from "lucide-react";
+import { resolveContextWindow } from "@openui-analytics/llm/context";
 import { Hint } from "@/components/ui/hint";
 import { DEFAULT_SANDBOX_CODE } from "@/lib/presetQueries";
+import { DEFAULT_WELCOME_MESSAGE } from "@/lib/sessionStorage";
 import { upsertMessage } from "@/lib/messages";
 import { useLlmSettings } from "@/hooks/useLlmSettings";
 import { useSessionManager } from "@/hooks/useSessionManager";
@@ -44,8 +46,11 @@ export default function ChatDashboard() {
   // 分析方法论查看入口（侧边栏底部按钮打开，弹窗内自取数）
   const [showMethodology, setShowMethodology] = useState(false);
   const [devToolsCode, setDevToolsCode] = useState(DEFAULT_SANDBOX_CODE);
-  // Plan-first：新问题先出分析思路（默认关）；「先出思路」开关
-  const [planMode, setPlanMode] = useState(false);
+  // 上下文用量（最近一次响应的实测 promptTokens；用量条数据源）
+  const [contextUsage, setContextUsage] = useState<{
+    promptTokens: number;
+    window: number;
+  } | null>(null);
 
   const {
     showSettings,
@@ -71,8 +76,8 @@ export default function ChatDashboard() {
     chatBody,
   } = useLlmSettings();
 
-  // useChat 的 initialMessages 由 useSessionManager 提供，而会话切换又需要
-  // useChat 的 setMessages —— 通过 registerSetMessages 延迟注入打破构造顺序环（见 hook 注释）。
+  // useChat 以欢迎语初始化，会话全文由 useSessionManager bootstrap 后
+  // 经 registerSetMessages 注入（构造顺序环解法，见 hook 注释）。
   // 发起请求时的会话 id：流式期间用户可能切换会话，onFinish 须写回发起会话
   const streamingSessionIdRef = useRef<string | null>(null);
 
@@ -80,11 +85,11 @@ export default function ChatDashboard() {
     sessions,
     currentSessionId,
     activeSession,
+    loaded: sessionsLoaded,
     editingSessionId,
     editingTitleText,
     setEditingSessionId,
     setEditingTitleText,
-    initialMessages,
     saveCurrentSessionMessages,
     updateSessionSources,
     registerSetMessages,
@@ -96,6 +101,10 @@ export default function ChatDashboard() {
     handleStartRename,
     handleSaveRename,
     handleClearAllSessions,
+    forkSession,
+    rewindSession,
+    planMode,
+    setPlanMode,
   } = useSessionManager();
 
   const handleChatError = useCallback((err: Error) => {
@@ -149,8 +158,13 @@ export default function ChatDashboard() {
     [currentSessionId, enabledPickerSources, updateSessionSources, getMessages]
   );
   const chatBodyWithSources = useMemo(
-    () => ({ ...chatBody, sources: activeSession?.enabledSources }),
-    [chatBody, activeSession?.enabledSources]
+    () => ({
+      ...chatBody,
+      sources: activeSession?.enabledSources,
+      // 上下文治理：服务端按会话读写 token 锚点与摘要缓存
+      sessionId: currentSessionId || undefined,
+    }),
+    [chatBody, activeSession?.enabledSources, currentSessionId]
   );
   // 当前会话实际启用的源（名称+id）：驱动加载提示与工具归因展示；useMemo 保 MessageItem memo 生效
   const sessionSources = useMemo(() => {
@@ -179,14 +193,22 @@ export default function ChatDashboard() {
     body: chatBodyWithSources,
     headers: authHeaders(),
     onError: handleChatError,
-    initialMessages,
-    onFinish: (message) => {
+    initialMessages: [DEFAULT_WELCOME_MESSAGE],
+    onFinish: (message, options) => {
       // 流式结束时保存：用 getMessages() 读取最新列表（含多步工具调用的中间消息），
       // upsert 防止与 AI SDK 已合入的最终消息重复；写回发起请求时的会话。
       saveCurrentSessionMessages(
         upsertMessage(getMessages(), message),
         streamingSessionIdRef.current ?? undefined
       );
+      // 上下文用量条：实测 promptTokens + 模型窗口（查表，与服务端同规则）
+      const promptTokens = options?.usage?.promptTokens;
+      if (typeof promptTokens === "number" && Number.isFinite(promptTokens)) {
+        setContextUsage({
+          promptTokens,
+          window: resolveContextWindow(model),
+        });
+      }
     },
   });
 
@@ -235,6 +257,23 @@ export default function ChatDashboard() {
       append({ role: "user", content: actionPrompt }, { body: nextModeBody() });
     },
     [append, currentSessionId, nextModeBody]
+  );
+
+  // 分叉：从该消息复制前缀历史生成新会话（hook 内完成切换与落盘）
+  const handleForkMessage = useCallback(
+    (messageId: string) => {
+      void forkSession(messageId);
+    },
+    [forkSession]
+  );
+
+  // 回滚重问：截断到该用户消息之前，消息内容回填输入框供修订后重发
+  const handleRewindMessage = useCallback(
+    (messageId: string) => {
+      const content = rewindSession(messageId);
+      if (content) setInput(content);
+    },
+    [rewindSession, setInput]
   );
 
   // 预设场景方向已明确，始终直出看板：不进规划模式，也不受待确认规划影响
@@ -456,17 +495,25 @@ export default function ChatDashboard() {
           </div>
         </header>
 
-        <MessageList
-          messages={messages}
-          status={status}
-          error={error}
-          showRawLang={showRawLang}
-          activeSources={sessionSources}
-          onRendererAction={handleRendererAction}
-          onReload={reload}
-          favoritedMessageIds={favoritedMessageIds}
-          onFavoriteDashboard={handleFavoriteDashboard}
-        />
+        {sessionsLoaded ? (
+          <MessageList
+            messages={messages}
+            status={status}
+            error={error}
+            showRawLang={showRawLang}
+            activeSources={sessionSources}
+            onRendererAction={handleRendererAction}
+            onReload={reload}
+            favoritedMessageIds={favoritedMessageIds}
+            onFavoriteDashboard={handleFavoriteDashboard}
+            onForkMessage={handleForkMessage}
+            onRewindMessage={handleRewindMessage}
+          />
+        ) : (
+          <div className="flex-1 flex items-center justify-center text-sm text-slate-400">
+            正在加载会话…
+          </div>
+        )}
 
         <SourcePicker
           sources={enabledPickerSources}
@@ -475,9 +522,33 @@ export default function ChatDashboard() {
           disabled={sourcesLocked}
         />
 
+        {/* 上下文用量条：最近一次响应的实测 promptTokens / 模型窗口；>70% 黄、>90% 红 */}
+        {contextUsage && (
+          <div className="px-6 pb-1.5 flex items-center gap-2 text-[10px] text-slate-400 select-none">
+            <span className="shrink-0">上下文</span>
+            <div className="w-32 h-1 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all ${
+                  (contextUsage.promptTokens / contextUsage.window) > 0.9
+                    ? "bg-red-500"
+                    : (contextUsage.promptTokens / contextUsage.window) > 0.7
+                      ? "bg-amber-500"
+                      : "bg-emerald-500"
+                }`}
+                style={{
+                  width: `${Math.min(100, Math.round((contextUsage.promptTokens / contextUsage.window) * 100))}%`,
+                }}
+              />
+            </div>
+            <span className="shrink-0 tabular-nums">
+              {`${(contextUsage.promptTokens / 1000).toFixed(1)}k / ${Math.round(contextUsage.window / 1000)}k（${Math.round((contextUsage.promptTokens / contextUsage.window) * 100)}%）`}
+            </span>
+          </div>
+        )}
+
         <ChatInput
           input={input}
-          isLoading={isLoading}
+          isLoading={isLoading || !sessionsLoaded}
           planMode={planMode}
           // AI SDK 的 handleInputChange 只读 e.target.value，事件源类型安全收敛到 textarea
           onChange={(e) => handleInputChange(e as unknown as React.ChangeEvent<HTMLInputElement>)}

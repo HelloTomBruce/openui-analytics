@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Hint } from "@/components/ui/hint";
 import {
   BarChart3,
@@ -21,15 +21,16 @@ import {
   Download,
   Upload,
   BookOpen,
+  MoreHorizontal,
 } from "lucide-react";
-import type { ChatSession } from "@/lib/sessionStorage";
+import type { SessionSummary } from "@/lib/sessionStore";
 // 仅取类型（编译期擦除）
 import type { DashboardSummary } from "@/lib/dashboardStore";
 import { PRESET_QUERIES } from "@/lib/presetQueries";
 import { SessionListItem, formatSessionTime } from "./SessionListItem";
 
 interface ChatSidebarProps {
-  sessions: ChatSession[];
+  sessions: SessionSummary[];
   currentSessionId: string;
   editingSessionId: string | null;
   editingTitleText: string;
@@ -49,7 +50,7 @@ interface ChatSidebarProps {
   onImportDashboard: (file: File) => void;
   onCreateNewChat: () => void;
   onSelectSession: (sessionId: string) => void;
-  onStartRename: (e: React.MouseEvent, session: ChatSession) => void;
+  onStartRename: (e: React.MouseEvent, session: SessionSummary) => void;
   onSaveRename: (sessionId: string) => void;
   onDeleteSession: (e: React.MouseEvent, sessionId: string) => void;
   onEditTitleChange: (text: string) => void;
@@ -324,7 +325,7 @@ export function ChatSidebar({
   );
 }
 
-/** 看板收藏列表项：查看 / 重新分析 / 导出快照 / 行内重命名 / 删除（行内二次确认） */
+/** 看板收藏列表项：外露仅「查看」，其余操作收纳进「...」下拉菜单（删除二次确认在菜单内完成） */
 function DashboardListItem({
   dashboard,
   onPreview,
@@ -342,13 +343,43 @@ function DashboardListItem({
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(dashboard.title);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  // 菜单关闭（任意路径）时复位删除确认态
+  const closeMenu = () => {
+    setMenuOpen(false);
+    setConfirmDelete(false);
+  };
+
+  // 菜单外点击 / Escape 关闭
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        closeMenu();
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closeMenu();
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [menuOpen]);
 
   const saveRename = () => {
     const trimmed = draft.trim();
     if (trimmed && trimmed !== dashboard.title) onRename(dashboard.id, trimmed);
     setEditing(false);
   };
+
+  const menuItemClass =
+    "w-full flex items-center gap-2 px-3 py-2 text-left text-xs hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors disabled:opacity-40 disabled:pointer-events-none";
 
   return (
     <div
@@ -386,29 +417,49 @@ function DashboardListItem({
             <div className="mt-0.5 text-[11px] text-slate-400 truncate">
               {dashboard.prompt ? dashboard.prompt : "（未记录原始提问）"}
             </div>
-            <div className="mt-0.5 flex items-center gap-2 text-[10px] text-slate-400">
-              <span>{formatSessionTime(dashboard.updatedAt)}</span>
+            {/* 第 3 行：时间信息（收藏时间 + 数据时间，中点分隔） */}
+            <div className="mt-0.5 flex items-center gap-1.5 text-[10px] text-slate-400">
+              <span className="shrink-0" title={`收藏于 ${new Date(dashboard.updatedAt).toLocaleString()}`}>
+                {formatSessionTime(dashboard.updatedAt)}
+              </span>
               {dashboard.dataUpdatedAt !== undefined && (
-                <span
-                  title={`数据确认于 ${new Date(dashboard.dataUpdatedAt).toLocaleString()}`}
-                >
-                  数据 {formatSessionTime(dashboard.dataUpdatedAt)}
-                </span>
-              )}
-              {dashboard.sourceNames && dashboard.sourceNames.length > 0 && (
-                <span className="px-1 py-0.5 rounded bg-slate-100 dark:bg-slate-800 truncate">
-                  {dashboard.sourceNames.join(" / ")}
-                </span>
+                <>
+                  <span className="text-slate-300 dark:text-slate-600">·</span>
+                  <span
+                    className="shrink-0 text-emerald-600/80 dark:text-emerald-400/80"
+                    title={`数据确认于 ${new Date(dashboard.dataUpdatedAt).toLocaleString()}`}
+                  >
+                    数据 {formatSessionTime(dashboard.dataUpdatedAt)}
+                  </span>
+                </>
               )}
             </div>
+            {/* 第 4 行：数据源徽章（多源只显首个 +「+N」，全量悬停可见） */}
+            {dashboard.sourceNames && dashboard.sourceNames.length > 0 && (
+              <div className="mt-1 flex items-center gap-1 min-w-0">
+                <span className="px-1 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-[10px] text-slate-400 truncate">
+                  {dashboard.sourceNames[0]}
+                </span>
+                {dashboard.sourceNames.length > 1 && (
+                  <span
+                    className="shrink-0 text-[10px] text-slate-400 cursor-default"
+                    title={dashboard.sourceNames.join(" / ")}
+                  >
+                    +{dashboard.sourceNames.length - 1}
+                  </span>
+                )}
+              </div>
+            )}
           </>
         )}
       </div>
 
-      {/* 行内操作：编辑态隐藏；点击不冒泡到行预览 */}
+      {/* 行内操作：仅外露「查看」；其余收纳进「...」菜单（编辑态隐藏；点击不冒泡到行预览） */}
       {!editing && (
         <div
-          className="flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+          className={`flex items-center gap-0.5 shrink-0 transition-opacity ${
+            menuOpen ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+          }`}
           onClick={(e) => e.stopPropagation()}
         >
           <Hint label="查看看板">
@@ -420,55 +471,93 @@ function DashboardListItem({
               <Eye className="w-3.5 h-3.5" />
             </button>
           </Hint>
-          <Hint label={dashboard.prompt ? "用原始提问重新分析" : "未记录原始提问"}>
-            <button
-              onClick={() => onReanalyze(dashboard.prompt)}
-              disabled={!dashboard.prompt}
-              aria-label={`重新分析 ${dashboard.title}`}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/50 disabled:opacity-30 disabled:pointer-events-none"
-            >
-              <RefreshCw className="w-3.5 h-3.5" />
-            </button>
-          </Hint>
-          <Hint label="导出 .openui.json 快照">
-            <button
-              onClick={() => onExport(dashboard.id)}
-              aria-label={`导出看板 ${dashboard.title}`}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/50"
-            >
-              <Download className="w-3.5 h-3.5" />
-            </button>
-          </Hint>
-          <Hint label="重命名">
-            <button
-              onClick={() => {
-                setDraft(dashboard.title);
-                setEditing(true);
-              }}
-              aria-label={`重命名看板 ${dashboard.title}`}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/50"
-            >
-              <Edit3 className="w-3.5 h-3.5" />
-            </button>
-          </Hint>
-          {confirmDelete ? (
-            <button
-              onClick={() => onDelete(dashboard.id)}
-              className="px-1.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-medium"
-            >
-              确认
-            </button>
-          ) : (
-            <Hint label="删除收藏">
+
+          <div className="relative" ref={menuRef}>
+            <Hint label="更多操作">
               <button
-                onClick={() => setConfirmDelete(true)}
-                aria-label={`删除看板 ${dashboard.title}`}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/50"
+                onClick={() => (menuOpen ? closeMenu() : setMenuOpen(true))}
+                aria-label={`看板 ${dashboard.title} 更多操作`}
+                aria-expanded={menuOpen}
+                aria-haspopup="menu"
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
               >
-                <Trash2 className="w-3.5 h-3.5" />
+                <MoreHorizontal className="w-3.5 h-3.5" />
               </button>
             </Hint>
-          )}
+
+            {menuOpen && (
+              <div
+                role="menu"
+                aria-label={`看板 ${dashboard.title} 操作菜单`}
+                className="absolute right-0 top-full mt-1 z-30 w-40 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-lg py-1"
+              >
+                <button
+                  role="menuitem"
+                  onClick={() => {
+                    closeMenu();
+                    onReanalyze(dashboard.prompt);
+                  }}
+                  disabled={!dashboard.prompt}
+                  aria-label={`重新分析 ${dashboard.title}`}
+                  title={dashboard.prompt ? "用原始提问重新分析" : "未记录原始提问"}
+                  className={menuItemClass}
+                >
+                  <RefreshCw className="w-3.5 h-3.5 text-slate-400" />
+                  <span>重新分析</span>
+                </button>
+                <button
+                  role="menuitem"
+                  onClick={() => {
+                    closeMenu();
+                    onExport(dashboard.id);
+                  }}
+                  aria-label={`导出看板 ${dashboard.title}`}
+                  className={menuItemClass}
+                >
+                  <Download className="w-3.5 h-3.5 text-slate-400" />
+                  <span>导出快照</span>
+                </button>
+                <button
+                  role="menuitem"
+                  onClick={() => {
+                    closeMenu();
+                    setDraft(dashboard.title);
+                    setEditing(true);
+                  }}
+                  aria-label={`重命名看板 ${dashboard.title}`}
+                  className={menuItemClass}
+                >
+                  <Edit3 className="w-3.5 h-3.5 text-slate-400" />
+                  <span>重命名</span>
+                </button>
+                <div className="my-1 border-t border-slate-100 dark:border-slate-800" />
+                {confirmDelete ? (
+                  <button
+                    role="menuitem"
+                    onClick={() => {
+                      closeMenu();
+                      onDelete(dashboard.id);
+                    }}
+                    aria-label={`确认删除看板 ${dashboard.title}`}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-950/70 transition-colors"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>确认删除</span>
+                  </button>
+                ) : (
+                  <button
+                    role="menuitem"
+                    onClick={() => setConfirmDelete(true)}
+                    aria-label={`删除看板 ${dashboard.title}`}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs text-rose-500 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>删除收藏</span>
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>

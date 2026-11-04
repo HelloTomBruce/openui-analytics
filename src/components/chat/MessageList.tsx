@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Message } from "@ai-sdk/react";
-import { ArrowDown, ArrowUp, Loader2, Sparkles, FileCode, Printer, Star } from "lucide-react";
+import { ArrowDown, ArrowUp, Loader2, Sparkles, FileCode, Printer, Star, GitFork, RotateCcw } from "lucide-react";
 import { OpenUIRenderer } from "@/components/OpenUIRenderer";
 import { Hint } from "@/components/ui/hint";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -33,6 +33,9 @@ interface MessageItemProps {
   isFavorited?: boolean;
   isFavoritePending?: boolean;
   onFavoriteDashboard?: (messageId: string) => void;
+  /** 会话操作：从该消息分叉新会话；回滚到该用户消息重问（仅 user 消息展示） */
+  onForkMessage?: (messageId: string) => void;
+  onRewindMessage?: (messageId: string) => void;
 }
 
 /** 工具调用徽标：按 <id>_ 前缀归因到源名称，未匹配走通用兜底 */
@@ -65,6 +68,8 @@ const MessageItem = React.memo(function MessageItem({
   isFavorited = false,
   isFavoritePending = false,
   onFavoriteDashboard,
+  onForkMessage,
+  onRewindMessage,
 }: MessageItemProps) {
   const rawContent = msg.content;
   // 提取 openui 代码块（仅 ```openui 与裸围栏进渲染器，sql/json 等留在正文）
@@ -221,6 +226,42 @@ const MessageItem = React.memo(function MessageItem({
           </div>
         )}
       </div>
+
+      {/* 会话操作行：分叉（任意消息）/ 回滚重问（仅用户消息）；欢迎语不展示 */}
+      {(onForkMessage || onRewindMessage) && msg.id !== "welcome" && (
+        <div
+          className={`no-print mt-1 flex items-center gap-2 text-[10px] text-slate-400 ${
+            msg.role === "user" ? "justify-end" : "justify-start"
+          }`}
+        >
+          {onForkMessage && (
+            <button
+              type="button"
+              onClick={() => onForkMessage(msg.id)}
+              disabled={isStreaming}
+              aria-label={`从该消息分叉新会话（消息 ${msg.id}）`}
+              title="复制到此为止的对话，分叉为新会话"
+              className="flex items-center gap-1 px-1.5 py-0.5 rounded hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/50 disabled:opacity-40 disabled:pointer-events-none transition-colors"
+            >
+              <GitFork className="w-3 h-3" />
+              <span>分叉</span>
+            </button>
+          )}
+          {msg.role === "user" && onRewindMessage && (
+            <button
+              type="button"
+              onClick={() => onRewindMessage(msg.id)}
+              disabled={isStreaming}
+              aria-label={`回滚到该消息重新提问（消息 ${msg.id}）`}
+              title="截断此消息后的对话，内容回填输入框重新提问"
+              className="flex items-center gap-1 px-1.5 py-0.5 rounded hover:text-amber-600 dark:hover:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/50 disabled:opacity-40 disabled:pointer-events-none transition-colors"
+            >
+              <RotateCcw className="w-3 h-3" />
+              <span>回滚重问</span>
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 });
@@ -241,6 +282,9 @@ interface MessageListProps {
   onFavoriteDashboard?: (
     input: FavoriteDashboardInput
   ) => Promise<FavoriteResult>;
+  /** 会话操作：从某条消息分叉新会话；回滚到某条用户消息重问 */
+  onForkMessage?: (messageId: string) => void;
+  onRewindMessage?: (messageId: string) => void;
 }
 
 /** 距顶/底多远以内视为「已在顶/底」（阈值像素） */
@@ -256,6 +300,8 @@ export function MessageList({
   onReload,
   favoritedMessageIds,
   onFavoriteDashboard,
+  onForkMessage,
+  onRewindMessage,
 }: MessageListProps) {
   // isLoading 与 status 同源，内部派生避免双重传参
   const isLoading = status === "submitted" || status === "streaming";
@@ -349,7 +395,13 @@ export function MessageList({
           // 空捕获不携带字段（服务端视为未提供；重复收藏时也无需清空——
           // 旧记录若已有捕获，同消息重跑 execute 后捕获会整体覆盖）
           ...(capture.queries.length > 0
-            ? { queries: capture.queries, bindings: capture.bindings }
+            ? {
+                queries: capture.queries,
+                bindings: capture.bindings,
+                ...(capture.transforms
+                  ? { transforms: capture.transforms }
+                  : {}),
+              }
             : {}),
         });
         if (res.ok) {
@@ -403,6 +455,8 @@ export function MessageList({
           onFavoriteDashboard={
             onFavoriteDashboard ? handleFavoriteDashboard : undefined
           }
+          onForkMessage={onForkMessage}
+          onRewindMessage={onRewindMessage}
         />
       ))}
 
