@@ -14,12 +14,17 @@ import type {
 } from "@openui-analytics/datasources";
 import { assertReadOnlySql } from "@openui-analytics/datasources/sqlGuard";
 import { parseMcpToolResult } from "@openui-analytics/datasources/parseToolResult";
-import { createParser } from "@openuidev/react-lang";
 import {
+  createParser,
   jsonToOpenUI,
   serverLibrary,
 } from "@openui-analytics/llm/serverLibrary";
-import { extractQueryRows, rowPropFor } from "./dashboardCapture";
+import { extractQueryRows, rowPropFor } from "./queryRows";
+import {
+  applyTransform,
+  isValidTransformSpec,
+  type TransformSpec,
+} from "./transforms";
 import type { DashboardRecord, DashboardQuery } from "./dashboardStore";
 
 /** 数据源网关（datasource manager 的结构子集，便于测试注入） */
@@ -125,10 +130,11 @@ interface ElementLike {
   props?: unknown;
 }
 
-/** 递归遍历元素树，按 bindings 回填行数组；返回仍过期（未刷新成功）的组件 */
+/** 递归遍历元素树，按 bindings 回填行数组（带 transform 的先重算）；返回仍过期（未刷新成功）的组件 */
 function backfillElements(
   root: unknown,
   bindings: Record<string, string>,
+  transforms: Record<string, TransformSpec> | undefined,
   rowsByQueryId: Map<string, Record<string, unknown>[] | null>
 ): string[] {
   const stale: string[] = [];
@@ -145,15 +151,20 @@ function backfillElements(
         const rows = rowsByQueryId.get(queryId);
         const prop =
           typeof node.typeName === "string" ? rowPropFor(node.typeName) : undefined;
+        // transform 绑定：重放结果按 spec 重算（spec 落盘自客户端，
+        // 刷新前复核形态——与只读白名单同一不信任哲学）
+        const spec = transforms?.[statementId];
+        const specValid = spec === undefined || isValidTransformSpec(spec);
         if (
           rows &&
           prop &&
           isPlainObject(node.props) &&
-          Array.isArray(node.props[prop])
+          Array.isArray(node.props[prop]) &&
+          specValid
         ) {
-          node.props[prop] = rows;
+          node.props[prop] = spec ? applyTransform(rows, spec) : rows;
         } else {
-          // 查询重放失败 / 组件类型不持行数组 / prop 形态异常 → 该组件保留旧数据
+          // 查询重放失败 / 组件类型不持行数组 / prop 形态或 spec 异常 → 保留旧数据
           stale.push(statementId);
         }
       }
@@ -260,7 +271,12 @@ export async function refreshDashboard(
     };
   }
 
-  const stale = backfillElements(parsed.root, record.bindings ?? {}, rowsByQueryId);
+  const stale = backfillElements(
+    parsed.root,
+    record.bindings ?? {},
+    record.transforms,
+    rowsByQueryId
+  );
   let dsl: string;
   try {
     dsl = jsonToOpenUI(parsed.root, serverLibrary);

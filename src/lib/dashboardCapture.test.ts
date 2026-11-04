@@ -164,6 +164,66 @@ describe("captureDashboardQueries 直取数绑定", () => {
   });
 });
 
+describe("captureDashboardQueries transform 推测（第二通道）", () => {
+  // 明细粒度查询结果（month × channel）
+  const DETAIL_ROWS = [
+    { channel: "TikTok", month: "09", spend: 1000, leads: 50 },
+    { channel: "TikTok", month: "10", spend: 1200, leads: 60 },
+    { channel: "Google", month: "09", spend: 2000, leads: 80 },
+    { channel: "Google", month: "10", spend: 800, leads: 20 },
+  ];
+
+  it("LLM 聚合+派生列组件：推测 transform 并绑定（bindings + transforms 同键）", () => {
+    // 组件是 channel 粒度汇总 + cac=spend/leads（直取匹配必然失败）
+    const dsl = [
+      "root = Root([cac_chart])",
+      'cac_chart = AnalyticsChart("bar", "渠道 CAC", "副题", "channel", [{"channel":"TikTok","spend":2200,"leads":110,"cac":20},{"channel":"Google","spend":2800,"leads":100,"cac":28}], [])',
+    ].join("\n");
+
+    const res = captureDashboardQueries(
+      dsl,
+      [sqlCall("pg1", "SELECT channel, month, spend, leads FROM ads", DETAIL_ROWS)],
+      SOURCES
+    );
+
+    expect(res.bindings.cac_chart).toBeDefined();
+    expect(res.queries).toHaveLength(1);
+    const spec = res.transforms?.cac_chart;
+    expect(spec).toBeDefined();
+    expect(spec?.op).toBe("aggregate");
+    expect(spec?.groupBy).toEqual(["channel"]);
+    expect(spec?.metrics).toEqual({ spend: "sum", leads: "sum" });
+    expect(spec?.compute).toEqual([{ field: "cac", expr: "spend / leads" }]);
+  });
+
+  it("数值对不上任何聚合（验证失败）：维持纯快照，不绑定", () => {
+    const dsl = [
+      "root = Root([fake])",
+      'fake = AnalyticsChart("bar", "假汇总", "副题", "channel", [{"channel":"TikTok","spend":999,"leads":110},{"channel":"Google","spend":888,"leads":100}], [])',
+    ].join("\n");
+
+    const res = captureDashboardQueries(
+      dsl,
+      [sqlCall("pg1", "SELECT ...", DETAIL_ROWS)],
+      SOURCES
+    );
+    expect(res.bindings).toEqual({});
+    expect(res.transforms).toBeUndefined();
+    expect(res.queries).toEqual([]);
+  });
+
+  it("直取匹配成功的组件不受影响（不产生 transforms）", () => {
+    const dsl = [
+      "root = Root([chart])",
+      'chart = AnalyticsChart("bar", "渠道成交", "副题", "channel", [{"channel":"TikTok Ads","deals":186},{"channel":"Google Ads","deals":152},{"channel":"线下展会","deals":118}], [])',
+    ].join("\n");
+
+    const res = captureDashboardQueries(dsl, [sqlCall("pg1", "SELECT 1")], SOURCES);
+    expect(res.bindings.chart).toBeDefined();
+    expect(res.transforms).toBeUndefined();
+  });
+});
+
 describe("captureDashboardQueries 查询候选提取", () => {
   const DSL_ONE_ROW = [
     'root = Root([table])',

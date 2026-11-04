@@ -74,6 +74,28 @@ describe("getExecuteSystemPrompt 执行模式提示词", () => {
   });
 });
 
+describe("Data Binding Discipline（可刷新看板约束）", () => {
+  it("direct 含聚合下推/命名绑定/原样复用三条硬约束", () => {
+    const prompt = getOpenUISystemPrompt(ACTIVE);
+    expect(prompt).toContain("Data Binding Discipline");
+    // 聚合下推 SQL
+    expect(prompt).toContain("Push aggregation down to SQL");
+    expect(prompt).toContain("Aggregate in SQL, not in your head");
+    // 命名变量绑定（statementId 来源）
+    expect(prompt).toContain("Assign every data component to a named variable");
+    expect(prompt).toContain("named variable");
+    // 行原样复用（直取匹配的前提）
+    expect(prompt).toContain("reuse query result rows verbatim");
+  });
+
+  it("execute 继承同一套约束（base 包含）；plan 不含（规划轮不出看板）", () => {
+    expect(getExecuteSystemPrompt(ACTIVE)).toContain("Data Binding Discipline");
+    expect(getOpenUIPlanPrompt(ACTIVE)).not.toContain(
+      "Data Binding Discipline"
+    );
+  });
+});
+
 describe("Schema Card 摘要注入（三模式）", () => {
   const DIGEST = "### 数据源 mysql-orders 结构卡（生成于 2026-11-02 10:30）\n- orders（约 1,234 行）：status text(3 值: paid/shipped/refunded)";
 

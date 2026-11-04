@@ -175,6 +175,12 @@ You have a rich set of declarative components available:
 - **ReactiveSimulator(title?, defaultBudget?, channelName?, currentCac?, cvrRate?)**: Interactive budget/workload forecasting calculator with local millisecond-speed reactive updates, form validation, and client CSV export.
 - **ActionButton(label, variant?, icon?, prompt?)**: Triggerable client action / workflow button.
 
+## Data Binding Discipline (makes dashboards refreshable):
+Dashboards whose components bind directly to query results can be refreshed later with ZERO LLM calls (queries are replayed server-side). Follow these rules so your dashboards stay refreshable:
+1. **Push aggregation down to SQL**: whenever a chart/table value can be computed with GROUP BY / SUM / AVG / COUNT / window functions, compute it IN the SQL query (e.g. \`SELECT channel, SUM(spend) AS spend, SUM(leads) AS leads, SUM(spend)/SUM(leads) AS cac ...\`). NEVER fetch detail rows and aggregate them in your narrative.
+2. **Assign every data component to a named variable**: \`cac_table = DataTable(...)\`, then reference the variable — never inline data components anonymously into layouts. This applies to DataTable, AnalyticsChart, RadarChart, ContributionHeatmap, FunnelChart, ActivityTimeline, and ActionPlanCard.
+3. **Component data rows reuse query result rows verbatim**: same column keys as the SQL/tool result, same values (no rounding, no unit suffixes appended to numbers, no extra computed columns). Filtering, sorting, or truncating to a subset of rows is fine.
+
 ## Instructions:
 1. When asked a business, data, GitLab engineering, or ZenTao project/bug/task question, first query the relevant data using your MCP tools.
 2. After retrieving data from MCP tools, you MUST immediately synthesize the insights and generate the complete \`\`\`openui ... \`\`\` generative UI dashboard.
@@ -200,6 +206,8 @@ You have a rich set of declarative components available:
       "Your response MUST contain valid openui-lang code inside ```openui and ``` code fence.",
       "root = Root(...) MUST be the first statement in the openui code block.",
       "Populate actual data rows/objects fetched from MCP tools inside the data arrays for charts, funnels, timelines, and tables.",
+      "Aggregate in SQL, not in your head: GROUP BY/SUM/AVG/COUNT belong in the query; component rows must reuse the query result rows verbatim (no rounding, no computed extra columns).",
+      "Every data component MUST be assigned to a named variable (e.g. cac_table = DataTable(...)) — anonymous inline components cannot be refreshed later.",
       "Use MetricGrid([c1, c2, ...]) to display multiple MetricCard items.",
       "Include ReactiveSimulator when the user is asking about budget simulation, CAC projections, or ROI forecasts.",
       "Include ActionPlanCard whenever providing optimization suggestions so users can take concrete next steps.",

@@ -131,6 +131,70 @@ describe("refreshDashboard 刷新成功", () => {
     expect(parser.parse(verdict.dsl).meta.errors).toEqual([]);
   });
 
+  it("transform 绑定：重放明细后按 spec 重算（聚合+派生列）再回填", async () => {
+    // 网关返回月度明细；组件绑定了 channel 粒度聚合 + cac=spend/leads 的变换
+    const gateway = makeGateway({
+      callTool: async () =>
+        mcpResult({
+          rows: [
+            { channel: "TikTok", month: "11", spend: 2000, leads: 100 },
+            { channel: "TikTok", month: "12", spend: 2000, leads: 100 },
+            { channel: "Google", month: "11", spend: 3000, leads: 60 },
+          ],
+        }),
+    });
+    const record = seedRecord({
+      dsl: [
+        "root = Root([cac_chart])",
+        'cac_chart = AnalyticsChart("bar", "渠道 CAC", "s", "channel", [{"channel":"TikTok","spend":2200,"leads":110,"cac":20},{"channel":"Google","spend":2800,"leads":100,"cac":28}], [])',
+      ].join("\n"),
+      queries: [QUERY_SQL],
+      bindings: { cac_chart: QUERY_SQL.id },
+      transforms: {
+        cac_chart: {
+          op: "aggregate",
+          groupBy: ["channel"],
+          metrics: { spend: "sum", leads: "sum" },
+          compute: [{ field: "cac", expr: "spend / leads" }],
+          sort: { key: "cac", desc: false },
+        },
+      },
+    });
+
+    const verdict = await refreshDashboard(record, gateway);
+
+    expect(verdict.ok).toBe(true);
+    if (!verdict.ok) return;
+    expect(verdict.stale).toEqual([]);
+    // 重算结果：TikTok spend=4000/leads=200/cac=20，Google spend=3000/leads=60/cac=50
+    expect(await parseDataAt(verdict.dsl, "cac_chart")).toEqual([
+      { channel: "TikTok", spend: 4000, leads: 200, cac: 20 },
+      { channel: "Google", spend: 3000, leads: 60, cac: 50 },
+    ]);
+  });
+
+  it("transform spec 落盘异常（被篡改）：组件按 stale 降级保留旧数据", async () => {
+    const gateway = makeGateway({});
+    const record = seedRecord({
+      queries: [QUERY_SQL],
+      bindings: { chart: QUERY_SQL.id },
+      transforms: {
+        chart: { op: "join" } as never, // 非法 spec（篡改场景）
+      },
+    });
+
+    const verdict = await refreshDashboard(record, gateway);
+
+    expect(verdict.ok).toBe(true);
+    if (!verdict.ok) return;
+    expect(verdict.stale).toEqual(["chart"]);
+    // 旧数据保留（未被重算覆盖）
+    expect(await parseDataAt(verdict.dsl, "chart")).toEqual([
+      { channel: "A", deals: 1 },
+      { channel: "B", deals: 2 },
+    ]);
+  });
+
   it("tool 重放：payload JSON 解析出 tool/args 传给 callTool", async () => {
     const callTool = vi.fn(async () => mcpResult([{ name: "r1", value: 9 }]));
     const gateway = makeGateway({ sources: ["gl1"], callTool });

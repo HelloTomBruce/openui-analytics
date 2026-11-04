@@ -11,6 +11,11 @@
  */
 import { createParser } from "@openuidev/react-lang";
 import { analyticsLibrary } from "@openui-analytics/components";
+import { inferTransform, type TransformSpec } from "./transforms";
+// 纯函数下沉到 queryRows（刷新端不经本模块间接引入 React 运行时）；
+// 此处再导出保持既有调用方（含测试） import 路径不变
+import { extractQueryRows, ROW_PROP_BY_TYPE } from "./queryRows";
+export { extractQueryRows, rowPropFor } from "./queryRows";
 // 仅取类型（编译期擦除，不会把 server-only 的 dashboardStore 打进客户端包）
 import type { DashboardQuery } from "./dashboardStore";
 
@@ -33,26 +38,16 @@ export interface CaptureResult {
   queries: DashboardQuery[];
   /** DSL 组件 statementId → query id；derived 组件不出现 */
   bindings: Record<string, string>;
+  /**
+   * 派生变换绑定（transform 推测 + 一致性验证通过的组件）：
+   * statementId → 确定性变换 spec；刷新时先重放 query 再按 spec 重算。
+   * 与 bindings 同键出现（transform 绑定也有底层 query）。
+   */
+  transforms?: Record<string, TransformSpec>;
 }
-
-/** 持行数组的组件属性：组件类型 → 行数组所在 prop 名（捕获与刷新回填共用） */
-const ROW_PROP_BY_TYPE: Record<string, string> = {
-  DataTable: "data",
-  AnalyticsChart: "data",
-  RadarChart: "data",
-  ContributionHeatmap: "data",
-  FunnelChart: "stages",
-  ActivityTimeline: "items",
-  ActionPlanCard: "actions",
-};
 
 /** 行数组匹配的行数上限（超出视为大规模数据，不做生成期绑定） */
 const MATCH_ROW_CAP = 500;
-
-/** 查询行提取（刷新重放复用）：组件类型对应行数组 prop 名，未知类型返回 undefined */
-export function rowPropFor(typeName: string): string | undefined {
-  return ROW_PROP_BY_TYPE[typeName];
-}
 
 /** 解析器单例：schema 与前端渲染器同源（analyticsLibrary），保证命名映射一致 */
 const parser = createParser(analyticsLibrary.toJSONSchema(), "Root");
@@ -75,29 +70,6 @@ function queryId(sourceId: string, kind: "sql" | "tool", payload: string): strin
   return `q_${fnv1aHex(`${sourceId}\u0000${kind}\u0000${payload}`)}`;
 }
 
-/**
- * 从工具结果中提取「记录行数组」（刷新重放复用）：
- * 顶层数组，或常见包裹键（rows/data/items/list/records/results）下的数组。
- * 其余形态（标量/嵌套/非对象元素）返回 null——无法与组件行匹配。
- */
-export function extractQueryRows(
-  result: unknown
-): Record<string, unknown>[] | null {
-  const asRows = (v: unknown): Record<string, unknown>[] | null =>
-    Array.isArray(v) && v.length > 0 && v.every(isPlainObject)
-      ? (v as Record<string, unknown>[])
-      : null;
-  if (Array.isArray(result)) return asRows(result);
-  if (isPlainObject(result)) {
-    for (const key of ["rows", "data", "items", "list", "records", "results"]) {
-      if (Array.isArray(result[key])) {
-        const rows = asRows(result[key]);
-        if (rows) return rows;
-      }
-    }
-  }
-  return null;
-}
 
 interface QueryCandidate {
   id: string;
@@ -281,6 +253,7 @@ export function captureDashboardQueries(
     if (components.length === 0) return { queries: [], bindings: {} };
 
     const bindings: Record<string, string> = {};
+    const transforms: Record<string, TransformSpec> = {};
     const usedQueryIds = new Map<string, QueryCandidate>();
     for (const comp of components) {
       const compRows = comp.rows.slice(0, MATCH_ROW_CAP);
@@ -302,6 +275,28 @@ export function captureDashboardQueries(
       if (best && !ambiguous) {
         bindings[comp.statementId] = best.id;
         usedQueryIds.set(best.id, best);
+        continue;
+      }
+
+      // 第二通道（直取失败）：transform 推测 + 一致性验证。
+      // 验证通过 = 「LLM 加工」被固化为确定性 spec，刷新时可零 LLM 重放；
+      // 不通过维持纯快照降级。与直取一致的歧义规则：
+      // 多个候选都验证通过 = 歧义，不绑定（宁缺勿错）。
+      let inferred: { cand: QueryCandidate; spec: TransformSpec } | null = null;
+      let inferredAmbiguous = false;
+      for (const cand of candidates) {
+        const spec = inferTransform(cand.rows, compRows, compKeys);
+        if (!spec) continue;
+        if (inferred === null) {
+          inferred = { cand, spec };
+        } else {
+          inferredAmbiguous = true;
+        }
+      }
+      if (inferred && !inferredAmbiguous) {
+        bindings[comp.statementId] = inferred.cand.id;
+        transforms[comp.statementId] = inferred.spec;
+        usedQueryIds.set(inferred.cand.id, inferred.cand);
       }
     }
 
@@ -313,6 +308,7 @@ export function captureDashboardQueries(
         payload,
       })),
       bindings,
+      ...(Object.keys(transforms).length > 0 ? { transforms } : {}),
     };
   } catch {
     return { queries: [], bindings: {} };

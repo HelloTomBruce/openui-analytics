@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { isValidTransformSpec, type TransformSpec } from "./transforms";
 
 /**
  * 看板收藏存储层（server-only：依赖 node:fs，禁止在客户端组件引入）。
@@ -64,6 +65,8 @@ export interface DashboardRecord {
   queries?: DashboardQuery[];
   /** 活看板：DSL 组件 statementId → queries[].id（值必引 queries 内存在的 id） */
   bindings?: Record<string, string>;
+  /** 派生变换绑定：statementId → 确定性变换 spec（键必 ⊆ bindings 键；刷新时重放后重算） */
+  transforms?: Record<string, TransformSpec>;
   /** 数据确认时间：收藏捕获时 = 生成时刻；刷新成功后更新（后续任务） */
   dataUpdatedAt?: number;
   createdAt: number;
@@ -82,6 +85,7 @@ export function toSummary(record: DashboardRecord): DashboardSummary {
     origin: record.origin,
     queries: record.queries,
     bindings: record.bindings,
+    transforms: record.transforms,
     dataUpdatedAt: record.dataUpdatedAt,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
@@ -97,6 +101,7 @@ export interface DashboardWriteInput {
   origin?: unknown;
   queries?: unknown;
   bindings?: unknown;
+  transforms?: unknown;
   dataUpdatedAt?: unknown;
 }
 
@@ -110,6 +115,8 @@ interface ValidFields {
   queries?: DashboardQuery[];
   /** 空对象 = 清空语义 */
   bindings?: Record<string, string>;
+  /** 空对象 = 清空语义；键必须 ⊆ 同请求/合并后 bindings 键 */
+  transforms?: Record<string, TransformSpec>;
   dataUpdatedAt?: number;
 }
 
@@ -302,6 +309,34 @@ export function validateDashboardFields(
     }
   }
 
+  let transforms: Record<string, TransformSpec> | undefined;
+  if (body.transforms !== undefined && body.transforms !== null) {
+    if (!isRecord(body.transforms)) {
+      errors.push("transforms 必须是对象（组件 id → 变换 spec）");
+    } else {
+      const entries = Object.entries(body.transforms);
+      if (entries.length === 0) {
+        transforms = {}; // 显式空对象 = 清空语义
+      } else if (entries.length > DASHBOARD_BINDINGS_MAX) {
+        errors.push(`transforms 最多 ${DASHBOARD_BINDINGS_MAX} 项`);
+      } else {
+        const map: Record<string, TransformSpec> = {};
+        for (const [key, value] of entries) {
+          if (!BINDING_KEY_RE.test(key)) {
+            errors.push(`transforms 键非法（DSL 组件标识符）: "${key}"`);
+            break;
+          }
+          if (!isValidTransformSpec(value)) {
+            errors.push(`transforms["${key}"] 不是合法的变换 spec`);
+            break;
+          }
+          map[key] = value;
+        }
+        if (errors.length === 0) transforms = map;
+      }
+    }
+  }
+
   let dataUpdatedAt: number | undefined;
   if (
     body.dataUpdatedAt !== undefined &&
@@ -334,6 +369,21 @@ export function validateDashboardFields(
     }
   }
 
+  // 引用完整性：非空 transforms 的键必须 ⊆ 同请求 bindings 键
+  // （transform 绑定建立在 query 绑定之上；合并后复核在 mergeLiveFields）
+  const hasTransforms = transforms !== undefined && Object.keys(transforms).length > 0;
+  if (hasTransforms) {
+    if (!hasBindings) {
+      errors.push("提供 transforms 时必须同时提供非空 bindings");
+    } else {
+      for (const key of Object.keys(transforms as Record<string, TransformSpec>)) {
+        if (!(bindings as Record<string, string>)[key]) {
+          errors.push(`transforms["${key}"] 没有对应的 bindings 绑定`);
+        }
+      }
+    }
+  }
+
   if (errors.length > 0) return { ok: false, status: 400, errors };
   return {
     ok: true,
@@ -345,6 +395,7 @@ export function validateDashboardFields(
       ...(origin !== undefined ? { origin } : {}),
       ...(queries !== undefined ? { queries } : {}),
       ...(bindings !== undefined ? { bindings } : {}),
+      ...(transforms !== undefined ? { transforms } : {}),
       ...(dataUpdatedAt !== undefined ? { dataUpdatedAt } : {}),
     },
   };
@@ -380,6 +431,7 @@ function mergeLiveFields(
       ok: true;
       queries?: DashboardQuery[];
       bindings?: Record<string, string>;
+      transforms?: Record<string, TransformSpec>;
       dataUpdatedAt?: number;
     }
   | { ok: false; errors: string[] } {
@@ -391,6 +443,14 @@ function mergeLiveFields(
       : fields.queries !== undefined
         ? undefined
         : existing?.bindings;
+  // transforms 跟随 bindings 生命周期：重新捕获（显式提供 queries/bindings）
+  // 而未提供 transforms 时旧变换即过期清除
+  const transforms =
+    fields.transforms !== undefined
+      ? fields.transforms
+      : fields.queries !== undefined || fields.bindings !== undefined
+        ? undefined
+        : existing?.transforms;
 
   if (bindings) {
     if (!queries || queries.length === 0) {
@@ -407,10 +467,25 @@ function mergeLiveFields(
     }
   }
 
+  if (transforms && Object.keys(transforms).length > 0) {
+    if (!bindings || Object.keys(bindings).length === 0) {
+      return { ok: false, errors: ["存在 transforms 但无对应 bindings"] };
+    }
+    for (const key of Object.keys(transforms)) {
+      if (!bindings[key]) {
+        return {
+          ok: false,
+          errors: [`transforms["${key}"] 没有对应的 bindings 绑定`],
+        };
+      }
+    }
+  }
+
   return {
     ok: true,
     ...(queries && queries.length > 0 ? { queries } : {}),
     ...(bindings && Object.keys(bindings).length > 0 ? { bindings } : {}),
+    ...(transforms && Object.keys(transforms).length > 0 ? { transforms } : {}),
     ...(queries && queries.length > 0
       ? {
           dataUpdatedAt:
@@ -571,6 +646,9 @@ export function createDashboardStore(opts: { dir: string }): DashboardStore {
           ...(fields.origin !== undefined ? { origin: fields.origin } : {}),
           ...(live.queries !== undefined ? { queries: live.queries } : {}),
           ...(live.bindings !== undefined ? { bindings: live.bindings } : {}),
+          ...(live.transforms !== undefined
+            ? { transforms: live.transforms }
+            : {}),
           ...(live.dataUpdatedAt !== undefined
             ? { dataUpdatedAt: live.dataUpdatedAt }
             : {}),
@@ -579,6 +657,7 @@ export function createDashboardStore(opts: { dir: string }): DashboardStore {
         // 清空语义：合并结果无对应字段时显式剔除（避免残留旧值）
         if (live.queries === undefined) delete record.queries;
         if (live.bindings === undefined) delete record.bindings;
+        if (live.transforms === undefined) delete record.transforms;
         if (live.dataUpdatedAt === undefined) delete record.dataUpdatedAt;
         reindexOrigin(existing.origin, record.origin, record.id);
         await writeRecord(record);
@@ -601,6 +680,9 @@ export function createDashboardStore(opts: { dir: string }): DashboardStore {
         ...(fields.origin !== undefined ? { origin: fields.origin } : {}),
         ...(live.queries !== undefined ? { queries: live.queries } : {}),
         ...(live.bindings !== undefined ? { bindings: live.bindings } : {}),
+        ...(live.transforms !== undefined
+          ? { transforms: live.transforms }
+          : {}),
         ...(live.dataUpdatedAt !== undefined
           ? { dataUpdatedAt: live.dataUpdatedAt }
           : {}),
@@ -631,6 +713,7 @@ export function createDashboardStore(opts: { dir: string }): DashboardStore {
         fields.origin === undefined &&
         fields.queries === undefined &&
         fields.bindings === undefined &&
+        fields.transforms === undefined &&
         fields.dataUpdatedAt === undefined
       ) {
         return { ok: false, status: 400, errors: ["无可更新字段"] };
@@ -650,6 +733,9 @@ export function createDashboardStore(opts: { dir: string }): DashboardStore {
         ...(fields.origin !== undefined ? { origin: fields.origin } : {}),
         ...(live.queries !== undefined ? { queries: live.queries } : {}),
         ...(live.bindings !== undefined ? { bindings: live.bindings } : {}),
+        ...(live.transforms !== undefined
+          ? { transforms: live.transforms }
+          : {}),
         ...(live.dataUpdatedAt !== undefined
           ? { dataUpdatedAt: live.dataUpdatedAt }
           : {}),
@@ -657,6 +743,7 @@ export function createDashboardStore(opts: { dir: string }): DashboardStore {
       };
       if (live.queries === undefined) delete record.queries;
       if (live.bindings === undefined) delete record.bindings;
+      if (live.transforms === undefined) delete record.transforms;
       if (live.dataUpdatedAt === undefined) delete record.dataUpdatedAt;
       reindexOrigin(existing.origin, record.origin, record.id);
       await writeRecord(record);

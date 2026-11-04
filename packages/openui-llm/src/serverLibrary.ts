@@ -337,3 +337,8 @@ export const serverLibrary = createLibrary({
 /** 服务端 DSL 序列化（活看板刷新回填用）：与 prompt/schema 同源，无客户端依赖 */
 export { jsonToOpenUI } from "@openuidev/lang-core";
 
+
+// RSC/Node 安全的解析器入口（lang-core 纯实现，无 React 运行时）：
+// 供 API 路由（如看板刷新）使用，替代 @openuidev/react-lang 根入口——
+// 后者在模块作用域调用 createContext，RSC 环境会直接 500。
+export { createParser } from "@openuidev/lang-core";

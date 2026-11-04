@@ -24,6 +24,8 @@ export interface FavoriteDashboardInput {
   /** 活看板（P2-A）：生成期捕获的直取数查询与组件绑定；缺省 = 纯快照收藏 */
   queries?: DashboardQuery[];
   bindings?: Record<string, string>;
+  /** 派生变换绑定（transform 推测 + 一致性验证通过）；键必 ⊆ bindings 键 */
+  transforms?: Record<string, import("@/lib/transforms").TransformSpec>;
 }
 
 export type FavoriteResult = { ok: true } | { ok: false; error: string };

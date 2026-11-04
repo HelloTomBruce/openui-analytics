@@ -36,6 +36,75 @@ afterEach(() => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+describe("transforms 派生变换绑定", () => {
+  const QUERIES = [
+    { id: "q_abc12345", sourceId: "pg1", kind: "sql" as const, payload: "SELECT 1" },
+  ];
+  const SPEC = {
+    op: "aggregate" as const,
+    groupBy: ["channel"],
+    metrics: { spend: "sum" },
+    compute: [{ field: "cac", expr: "spend / leads" }],
+  };
+
+  it("合法 transforms 随收藏落盘并回读；摘要携带", async () => {
+    const verdict = await store.upsert({
+      dsl: "root = Root([t])",
+      queries: QUERIES,
+      bindings: { cac_chart: "q_abc12345" },
+      transforms: { cac_chart: SPEC },
+    });
+    expect(verdict.ok).toBe(true);
+    if (!verdict.ok) return;
+    const got = await store.get(verdict.record.id);
+    expect(got?.transforms?.cac_chart).toEqual(SPEC);
+    const list = await store.list();
+    expect(list[0].transforms?.cac_chart).toEqual(SPEC);
+  });
+
+  it("transforms 键无对应 bindings → 400；非法 spec → 400", async () => {
+    const orphan = await store.upsert({
+      dsl: "root = Root([t])",
+      queries: QUERIES,
+      bindings: { other: "q_abc12345" },
+      transforms: { cac_chart: SPEC },
+    });
+    expect(orphan.ok).toBe(false);
+    if (!orphan.ok) expect(orphan.errors[0]).toContain("bindings");
+
+    const badSpec = await store.upsert({
+      dsl: "root = Root([t])",
+      queries: QUERIES,
+      bindings: { cac_chart: "q_abc12345" },
+      transforms: { cac_chart: { op: "join" } },
+    });
+    expect(badSpec.ok).toBe(false);
+  });
+
+  it("重新捕获未提供 transforms 时旧变换过期清除", async () => {
+    const first = await store.upsert({
+      dsl: "root = Root([t])",
+      queries: QUERIES,
+      bindings: { cac_chart: "q_abc12345" },
+      transforms: { cac_chart: SPEC },
+      origin: { messageId: "m1" },
+    });
+    if (!first.ok) throw new Error("seed failed");
+
+    // 同消息再次收藏：新捕获无 transforms（直取绑定），旧变换应被清除
+    const second = await store.upsert({
+      dsl: "root = Root([t])",
+      queries: QUERIES,
+      bindings: { cac_chart: "q_abc12345" },
+      origin: { messageId: "m1" },
+    });
+    expect(second.ok).toBe(true);
+    if (second.ok) {
+      expect("transforms" in second.record).toBe(false);
+    }
+  });
+});
+
 describe("upsert 收藏/覆盖收藏", () => {
   it("新建：生成 id、落盘单文件、缺省标题按 prompt 20 字截断", async () => {
     const verdict = await store.upsert({
