@@ -1,3 +1,6 @@
+// @vitest-environment node
+// importOriginal 会真实加载 dashboardRefresh → dbMcpServer → node:sqlite；
+// Node 22 的 builtinModules 未列 sqlite，jsdom（vite client 环境）无法外置会打包失败
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { POST } from "./route";
 import { dashboardStore } from "@/lib/dashboardStore";

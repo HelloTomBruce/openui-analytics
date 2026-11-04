@@ -1,3 +1,6 @@
+// @vitest-environment node
+// 依赖链经 @openui-analytics/datasources 触达 node:sqlite；Node 22 的
+// builtinModules 未列 sqlite，jsdom（vite client 环境）无法外置会打包失败
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { GET, POST } from "./route";
 import { datasources } from "@/lib/datasources";
