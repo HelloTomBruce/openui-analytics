@@ -7,7 +7,9 @@
     ".": "./src/index.ts",
     "./adapters/ai": "./src/adapters/ai.ts",
     "./schema/card": "./src/schema/card.ts",
-    "./schema/store": "./src/schema/store.ts"
+    "./schema/store": "./src/schema/store.ts",
+    "./sqlGuard": "./src/connectors/db/sqlGuard.ts",
+    "./parseToolResult": "./src/parseToolResult.ts"
   },
   "scripts": {
     "test": "vitest run"

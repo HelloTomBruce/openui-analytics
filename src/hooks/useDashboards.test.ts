@@ -21,6 +21,9 @@ const SUMMARY = {
   updatedAt: 200,
 };
 
+/** 刷新成功后的最新摘要：dataUpdatedAt 已被服务端更新 */
+const REFRESHED_SUMMARY = { ...SUMMARY, dataUpdatedAt: 999 };
+
 const fetchMock = vi.fn();
 
 function installRouter(routes: {
@@ -28,12 +31,17 @@ function installRouter(routes: {
   post?: Response;
   put?: Response;
   del?: Response;
+  refresh?: Response;
 }) {
   fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     const method = init?.method ?? "GET";
     if (!url.includes("/api/dashboards")) return jsonResponse(404, {});
-    if (method === "POST") return routes.post ?? jsonResponse(201, { dashboard: SUMMARY });
+    if (method === "POST") {
+      // 活看板刷新端点（/api/dashboards/:id/refresh）与收藏端点区分路由
+      if (url.endsWith("/refresh")) return routes.refresh ?? jsonResponse(500, {});
+      return routes.post ?? jsonResponse(201, { dashboard: SUMMARY });
+    }
     if (method === "PUT") return routes.put ?? jsonResponse(200, { dashboard: SUMMARY });
     if (method === "DELETE") return routes.del ?? new Response(null, { status: 204 });
     return routes.get ?? jsonResponse(200, { dashboards: [SUMMARY] });
@@ -170,5 +178,89 @@ describe("useDashboards", () => {
     await act(async () => {});
     expect(result.current.summaries).toEqual([]);
     expect(result.current.loaded).toBe(true);
+  });
+
+  describe("refreshOne（活看板零 LLM 刷新，P2-A）", () => {
+    it("刷新成功 → 返回最新摘要 + stale 列表，并就地更新 summaries 的 dataUpdatedAt", async () => {
+      installRouter({
+        refresh: jsonResponse(200, {
+          dashboard: REFRESHED_SUMMARY,
+          stale: [],
+        }),
+      });
+      const { result } = renderHook(() => useDashboards());
+      await act(async () => {});
+
+      let res!: Awaited<ReturnType<typeof result.current.refreshOne>>;
+      await act(async () => {
+        res = await result.current.refreshOne("dash_ab12cd34");
+      });
+      expect(res).toEqual({
+        ok: true,
+        summary: REFRESHED_SUMMARY,
+        stale: [],
+      });
+
+      // 摘要就地更新：列表侧栏时间戳随刷新同步
+      expect(result.current.summaries).toEqual([REFRESHED_SUMMARY]);
+
+      const postCall = fetchMock.mock.calls.find(
+        (c) => String(c[0]).endsWith("/refresh")
+      ) as [string, RequestInit];
+      expect(postCall[0]).toBe("/api/dashboards/dash_ab12cd34/refresh");
+      expect(postCall[1].method).toBe("POST");
+    });
+
+    it("部分组件 stale → 原样透出 statementId 列表（过期徽标按组件提示）", async () => {
+      installRouter({
+        refresh: jsonResponse(200, {
+          dashboard: REFRESHED_SUMMARY,
+          stale: ["chart-a", "chart-b"],
+        }),
+      });
+      const { result } = renderHook(() => useDashboards());
+      await act(async () => {});
+
+      let res!: Awaited<ReturnType<typeof result.current.refreshOne>>;
+      await act(async () => {
+        res = await result.current.refreshOne("dash_ab12cd34");
+      });
+      expect(res.ok).toBe(true);
+      if (res.ok) expect(res.stale).toEqual(["chart-a", "chart-b"]);
+    });
+
+    it("静态快照（400）/ 数据源不可用（502）→ 归一错误文案", async () => {
+      installRouter({
+        refresh: jsonResponse(400, { error: "静态快照不支持刷新" }),
+      });
+      const { result } = renderHook(() => useDashboards());
+      await act(async () => {});
+
+      let res!: Awaited<ReturnType<typeof result.current.refreshOne>>;
+      await act(async () => {
+        res = await result.current.refreshOne("dash_ab12cd34");
+      });
+      expect(res).toMatchObject({ ok: false, error: expect.stringContaining("静态快照") });
+
+      installRouter({
+        refresh: jsonResponse(502, { error: "数据源连接失败" }),
+      });
+      await act(async () => {
+        res = await result.current.refreshOne("dash_ab12cd34");
+      });
+      expect(res).toMatchObject({ ok: false, error: expect.stringContaining("数据源") });
+    });
+
+    it("网络异常 → 兜底文案", async () => {
+      fetchMock.mockRejectedValue(new Error("offline"));
+      const { result } = renderHook(() => useDashboards());
+      await act(async () => {});
+
+      let res!: Awaited<ReturnType<typeof result.current.refreshOne>>;
+      await act(async () => {
+        res = await result.current.refreshOne("dash_ab12cd34");
+      });
+      expect(res).toEqual({ ok: false, error: "刷新失败：网络错误" });
+    });
   });
 });

@@ -11,6 +11,11 @@ import { toast } from "@/lib/toast";
 import { downloadDashboardSnapshot } from "@/lib/dashboardSnapshot";
 import { formatSessionTime } from "./SessionListItem";
 
+/** 预览内刷新结果：成功附刷新后的完整记录与 stale 组件列表（由父层接线 get+refresh） */
+export type PreviewRefreshResult =
+  | { ok: true; record: DashboardRecord; stale: string[] }
+  | { ok: false; error: string };
+
 interface DashboardPreviewModalProps {
   /** 待预览的完整收藏记录；null 不渲染 */
   dashboard: DashboardRecord | null;
@@ -21,6 +26,8 @@ interface DashboardPreviewModalProps {
   onDelete: (id: string) => void;
   /** 交互组件动作：注入 ChatInput（不自动发送），由父层接线 */
   onAction: (actionPrompt: string) => void;
+  /** 活看板数据刷新（零 LLM 重放 queries）；父层负责回写最新记录到 dashboard prop */
+  onRefresh: (id: string) => Promise<PreviewRefreshResult>;
 }
 
 /**
@@ -35,6 +42,7 @@ export function DashboardPreviewModal({
   onRename,
   onDelete,
   onAction,
+  onRefresh,
 }: DashboardPreviewModalProps) {
   // 行内重命名与删除确认的本地状态；换预览目标（id 变化）时在 render 期复位
   // （setState-during-render 官方模式，替代 effect 内同步 setState）
@@ -42,15 +50,50 @@ export function DashboardPreviewModal({
   const [draft, setDraft] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [lastId, setLastId] = useState(dashboard?.id);
+  // 刷新进行中 / 部分组件过期（stale）徽标；换预览目标一并复位
+  const [refreshing, setRefreshing] = useState(false);
+  const [staleIds, setStaleIds] = useState<string[]>([]);
 
   if (dashboard && dashboard.id !== lastId) {
     setLastId(dashboard.id);
     setEditing(false);
     setConfirmDelete(false);
     setDraft(dashboard.title);
+    setRefreshing(false);
+    setStaleIds([]);
   }
 
   if (!dashboard) return null;
+
+  // 活看板判定：带 queries 才能刷新（v0.1 旧快照只读）；derived 组件随主查询重算
+  const canRefresh = (dashboard.queries?.length ?? 0) > 0;
+
+  const handleRefresh = async () => {
+    if (!canRefresh || refreshing) return;
+    setRefreshing(true);
+    try {
+      const res = await onRefresh(dashboard.id);
+      if (res.ok) {
+        // stale 组件保留旧值 → 头部徽标提示；全部成功则清除
+        setStaleIds(res.stale);
+        toast(
+          res.stale.length > 0
+            ? `已刷新，${res.stale.length} 个组件查询失败保留旧数据`
+            : "数据已刷新",
+          res.stale.length > 0 ? "info" : "success"
+        );
+      } else {
+        setStaleIds([]);
+        toast(res.error, "error");
+      }
+    } catch {
+      // onRefresh 接线链路异常兜底：不让「刷新中…」态静默吞掉错误
+      setStaleIds([]);
+      toast("刷新失败，请稍后重试", "error");
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   const startRename = () => {
     setDraft(dashboard.title);
@@ -132,6 +175,20 @@ export function DashboardPreviewModal({
             )}
             <div className="mt-1 flex items-center gap-2 text-[11px] text-slate-400 flex-wrap">
               <span>收藏于 {formatSessionTime(dashboard.updatedAt)}</span>
+              {dashboard.dataUpdatedAt !== undefined && (
+                <span title={new Date(dashboard.dataUpdatedAt).toLocaleString()}>
+                  数据时间 {formatSessionTime(dashboard.dataUpdatedAt)}
+                </span>
+              )}
+              {staleIds.length > 0 && (
+                <span
+                  data-testid="stale-badge"
+                  title={`查询失败保留旧数据的组件：${staleIds.join("、")}`}
+                  className="px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-950/50 text-amber-700 dark:text-amber-400 font-medium"
+                >
+                  ⚠ {staleIds.length} 个组件数据过期
+                </span>
+              )}
               {dashboard.sourceNames && dashboard.sourceNames.length > 0 && (
                 <span className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800">
                   {dashboard.sourceNames.join(" / ")}
@@ -146,6 +203,26 @@ export function DashboardPreviewModal({
           </div>
 
           <div className="flex items-center gap-1.5 shrink-0">
+            <Hint
+              label={
+                canRefresh
+                  ? "重放取数查询刷新组件数据（零 LLM 调用）"
+                  : "旧版静态快照（无取数查询）不支持刷新，可重新分析取最新数据"
+              }
+            >
+              <button
+                onClick={handleRefresh}
+                disabled={!canRefresh || refreshing}
+                aria-label="刷新数据"
+                data-testid="refresh-data"
+                className="flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg border border-emerald-200 dark:border-emerald-800 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/50 transition-colors disabled:opacity-40 disabled:pointer-events-none"
+              >
+                <RefreshCw
+                  className={`w-3.5 h-3.5 ${refreshing ? "animate-spin" : ""}`}
+                />
+                <span>{refreshing ? "刷新中…" : "刷新数据"}</span>
+              </button>
+            </Hint>
             <Hint
               label={
                 dashboard.prompt

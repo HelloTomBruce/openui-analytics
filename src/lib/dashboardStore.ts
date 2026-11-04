@@ -18,12 +18,35 @@ import path from "node:path";
 export const DASHBOARD_DSL_MAX = 2 * 1024 * 1024;
 export const DASHBOARD_TITLE_MAX = 200;
 export const DASHBOARD_PROMPT_MAX = 2000;
+export const DASHBOARD_QUERIES_MAX = 50;
+/** 单条查询 payload 上限（SQL 文本或 {tool,args} JSON，64KB） */
+export const DASHBOARD_QUERY_PAYLOAD_MAX = 64 * 1024;
+export const DASHBOARD_BINDINGS_MAX = 100;
 
 const ID_RE = /^dash_[0-9a-f]{8}$/;
+/** 查询 id：q_ + 1-32 位小写字母数字（生成期捕获为 q_ + 8 位十六进制散列） */
+const QUERY_ID_RE = /^q_[0-9a-z]{1,32}$/;
+/** 源 id 规则与数据源配置层一致（packages/openui-datasources SOURCE_ID_PATTERN） */
+const QUERY_SOURCE_ID_RE = /^[a-z][a-z0-9-]{0,31}$/;
+/** 绑定键：DSL statementId（标识符语法，长度 ≤ 64） */
+const BINDING_KEY_RE = /^[$_a-zA-Z][$_a-zA-Z0-9]{0,63}$/;
 
 export interface DashboardOrigin {
   sessionId?: string;
   messageId?: string;
+}
+
+/**
+ * 活看板取数查询（P2-A）：收藏时从 execute 轮工具调用记录捕获。
+ * kind=sql → payload 为 SQL 文本（db 类源重放）；kind=tool → payload 为
+ * {"tool","args"} JSON 串（MCP 类源重放）。
+ */
+export interface DashboardQuery {
+  /** q_ 前缀；由 (sourceId, kind, payload) 散列决定，同查询幂等 */
+  id: string;
+  sourceId: string;
+  kind: "sql" | "tool";
+  payload: string;
 }
 
 export interface DashboardRecord {
@@ -37,6 +60,12 @@ export interface DashboardRecord {
   sourceNames?: string[];
   /** 重复收藏 upsert 依据 */
   origin?: DashboardOrigin;
+  /** 活看板：被看板组件直接引用的取数查询（derived 组件不绑定；可空 = 旧快照只读） */
+  queries?: DashboardQuery[];
+  /** 活看板：DSL 组件 statementId → queries[].id（值必引 queries 内存在的 id） */
+  bindings?: Record<string, string>;
+  /** 数据确认时间：收藏捕获时 = 生成时刻；刷新成功后更新（后续任务） */
+  dataUpdatedAt?: number;
   createdAt: number;
   updatedAt: number;
 }
@@ -51,6 +80,9 @@ export function toSummary(record: DashboardRecord): DashboardSummary {
     prompt: record.prompt,
     sourceNames: record.sourceNames,
     origin: record.origin,
+    queries: record.queries,
+    bindings: record.bindings,
+    dataUpdatedAt: record.dataUpdatedAt,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
   };
@@ -63,6 +95,9 @@ export interface DashboardWriteInput {
   prompt?: unknown;
   sourceNames?: unknown;
   origin?: unknown;
+  queries?: unknown;
+  bindings?: unknown;
+  dataUpdatedAt?: unknown;
 }
 
 interface ValidFields {
@@ -71,6 +106,11 @@ interface ValidFields {
   prompt?: string;
   sourceNames?: string[];
   origin?: DashboardOrigin;
+  /** 空数组 = 清空语义（显式清除旧查询） */
+  queries?: DashboardQuery[];
+  /** 空对象 = 清空语义 */
+  bindings?: Record<string, string>;
+  dataUpdatedAt?: number;
 }
 
 export type DashboardVerdict<T> =
@@ -187,6 +227,113 @@ export function validateDashboardFields(
     }
   }
 
+  let queries: DashboardQuery[] | undefined;
+  if (body.queries !== undefined && body.queries !== null) {
+    const raw = body.queries;
+    if (!Array.isArray(raw)) {
+      errors.push("queries 必须是数组");
+    } else if (raw.length === 0) {
+      queries = []; // 显式空数组 = 清空语义（保留「已提供」信号）
+    } else if (raw.length > DASHBOARD_QUERIES_MAX) {
+      errors.push(`queries 最多 ${DASHBOARD_QUERIES_MAX} 条`);
+    } else {
+      const seen = new Set<string>();
+      const list: DashboardQuery[] = [];
+      for (const item of raw) {
+        if (!isRecord(item)) {
+          errors.push("queries 每项必须是对象");
+          break;
+        }
+        const id = typeof item.id === "string" ? item.id : "";
+        const sourceId = typeof item.sourceId === "string" ? item.sourceId : "";
+        const payload =
+          typeof item.payload === "string" ? item.payload.trim() : "";
+        if (!QUERY_ID_RE.test(id)) {
+          errors.push(`queries[].id 非法（需 q_ 前缀）: "${id}"`);
+        } else if (seen.has(id)) {
+          errors.push(`queries[].id 重复: "${id}"`);
+        }
+        if (!QUERY_SOURCE_ID_RE.test(sourceId)) {
+          errors.push(`queries[].sourceId 非法: "${sourceId}"`);
+        }
+        if (item.kind !== "sql" && item.kind !== "tool") {
+          errors.push("queries[].kind 必须是 sql 或 tool");
+        }
+        if (payload.length === 0) {
+          errors.push("queries[].payload 必须是非空字符串");
+        } else if (payload.length > DASHBOARD_QUERY_PAYLOAD_MAX) {
+          errors.push(
+            `queries[].payload 超过 ${DASHBOARD_QUERY_PAYLOAD_MAX} 字符上限`
+          );
+        }
+        if (errors.length > 0) break;
+        seen.add(id);
+        list.push({ id, sourceId, kind: item.kind as "sql" | "tool", payload });
+      }
+      if (errors.length === 0) queries = list;
+    }
+  }
+
+  let bindings: Record<string, string> | undefined;
+  if (body.bindings !== undefined && body.bindings !== null) {
+    if (!isRecord(body.bindings)) {
+      errors.push("bindings 必须是对象（组件 id → query id）");
+    } else {
+      const entries = Object.entries(body.bindings);
+      if (entries.length === 0) {
+        bindings = {}; // 显式空对象 = 清空语义
+      } else if (entries.length > DASHBOARD_BINDINGS_MAX) {
+        errors.push(`bindings 最多 ${DASHBOARD_BINDINGS_MAX} 项`);
+      } else {
+        const map: Record<string, string> = {};
+        for (const [key, value] of entries) {
+          if (!BINDING_KEY_RE.test(key)) {
+            errors.push(`bindings 键非法（DSL 组件标识符）: "${key}"`);
+            break;
+          }
+          if (typeof value !== "string" || !QUERY_ID_RE.test(value)) {
+            errors.push(`bindings["${key}"] 必须是 q_ 前缀的 query id`);
+            break;
+          }
+          map[key] = value;
+        }
+        if (errors.length === 0) bindings = map;
+      }
+    }
+  }
+
+  let dataUpdatedAt: number | undefined;
+  if (
+    body.dataUpdatedAt !== undefined &&
+    body.dataUpdatedAt !== null
+  ) {
+    if (
+      typeof body.dataUpdatedAt !== "number" ||
+      !Number.isInteger(body.dataUpdatedAt) ||
+      body.dataUpdatedAt <= 0
+    ) {
+      errors.push("dataUpdatedAt 必须是正整数时间戳");
+    } else {
+      dataUpdatedAt = body.dataUpdatedAt;
+    }
+  }
+
+  // 引用完整性：非空 bindings 的值必须指向同请求内的 query id
+  // （空 bindings/空 queries = 清空语义不参与；update 局部更新时由调用方按合并后记录复核）
+  const hasBindings = bindings !== undefined && Object.keys(bindings).length > 0;
+  if (hasBindings) {
+    if (queries === undefined) {
+      errors.push("提供 bindings 时必须同时提供 queries");
+    } else {
+      const ids = new Set(queries.map((q) => q.id));
+      for (const [key, value] of Object.entries(bindings as Record<string, string>)) {
+        if (!ids.has(value)) {
+          errors.push(`bindings["${key}"] 引用了不存在的 query: "${value}"`);
+        }
+      }
+    }
+  }
+
   if (errors.length > 0) return { ok: false, status: 400, errors };
   return {
     ok: true,
@@ -196,6 +343,9 @@ export function validateDashboardFields(
       ...(prompt !== undefined ? { prompt } : {}),
       ...(sourceNames !== undefined ? { sourceNames } : {}),
       ...(origin !== undefined ? { origin } : {}),
+      ...(queries !== undefined ? { queries } : {}),
+      ...(bindings !== undefined ? { bindings } : {}),
+      ...(dataUpdatedAt !== undefined ? { dataUpdatedAt } : {}),
     },
   };
 }
@@ -214,19 +364,76 @@ export function deriveDashboardTitle(prompt?: string): string | null {
   return clean.length > 20 ? `${clean.slice(0, 20)}...` : clean;
 }
 
+/**
+ * 活看板字段的合并语义（upsert/update 共用）：
+ * - 显式空数组/空对象 = 清空；queries 显式提供时 bindings 缺省随之清空
+ *   （收藏覆盖链路同请求总是成对提供；防止旧绑定残留指向已清除的查询）
+ * - 引用完整性按**合并后**记录判定（validateDashboardFields 只校验同请求一致）
+ * - dataUpdatedAt：合并后仍有查询时取 max(显式值, 缺省值)；无查询则清除
+ */
+function mergeLiveFields(
+  existing: DashboardRecord | null,
+  fields: ValidFields,
+  fallbackDataUpdatedAt: number
+):
+  | {
+      ok: true;
+      queries?: DashboardQuery[];
+      bindings?: Record<string, string>;
+      dataUpdatedAt?: number;
+    }
+  | { ok: false; errors: string[] } {
+  const queries =
+    fields.queries !== undefined ? fields.queries : existing?.queries;
+  const bindings =
+    fields.bindings !== undefined
+      ? fields.bindings
+      : fields.queries !== undefined
+        ? undefined
+        : existing?.bindings;
+
+  if (bindings) {
+    if (!queries || queries.length === 0) {
+      return { ok: false, errors: ["存在 bindings 但无对应 queries"] };
+    }
+    const ids = new Set(queries.map((q) => q.id));
+    for (const [key, value] of Object.entries(bindings)) {
+      if (!ids.has(value)) {
+        return {
+          ok: false,
+          errors: [`bindings["${key}"] 引用了不存在的 query: "${value}"`],
+        };
+      }
+    }
+  }
+
+  return {
+    ok: true,
+    ...(queries && queries.length > 0 ? { queries } : {}),
+    ...(bindings && Object.keys(bindings).length > 0 ? { bindings } : {}),
+    ...(queries && queries.length > 0
+      ? {
+          dataUpdatedAt:
+            fields.dataUpdatedAt ??
+            Math.max(fallbackDataUpdatedAt, existing?.dataUpdatedAt ?? 0),
+        }
+      : {}),
+  };
+}
+
 export interface DashboardStore {
   /** 摘要列表（updatedAt 降序；坏文件静默跳过） */
   list(): Promise<DashboardSummary[]>;
   /** 详情（含 dsl）；未知/坏文件返回 null */
   get(id: string): Promise<DashboardRecord | null>;
-  /** 收藏/覆盖收藏：dsl 必填；同 origin.messageId 命中已有记录则覆盖更新 */
+  /** 收藏/覆盖收藏：dsl 必填；同 origin.messageId 命中已有记录则覆盖更新（活看板字段整体替换） */
   upsert(
     body: DashboardWriteInput
   ): Promise<
     | { ok: true; record: DashboardRecord }
     | { ok: false; status: 400 | 413; errors: string[] }
   >;
-  /** 局部更新：title / dsl / prompt / sourceNames / origin 至少一项 */
+  /** 局部更新：title / dsl / prompt / sourceNames / origin / queries / bindings / dataUpdatedAt 至少一项 */
   update(
     id: string,
     body: DashboardWriteInput
@@ -350,6 +557,9 @@ export function createDashboardStore(opts: { dir: string }): DashboardStore {
 
       if (existing) {
         // 覆盖更新：保 id/createdAt 与（可能已重命名的）标题；显式字段覆盖
+        // 活看板字段：收藏覆盖时捕获结果整体替换（空 = 清空），引用完整性按合并后判定
+        const live = mergeLiveFields(existing, fields, now);
+        if (!live.ok) return { ok: false, status: 400, errors: live.errors };
         const record: DashboardRecord = {
           ...existing,
           dsl: fields.dsl,
@@ -359,13 +569,24 @@ export function createDashboardStore(opts: { dir: string }): DashboardStore {
             ? { sourceNames: fields.sourceNames }
             : {}),
           ...(fields.origin !== undefined ? { origin: fields.origin } : {}),
+          ...(live.queries !== undefined ? { queries: live.queries } : {}),
+          ...(live.bindings !== undefined ? { bindings: live.bindings } : {}),
+          ...(live.dataUpdatedAt !== undefined
+            ? { dataUpdatedAt: live.dataUpdatedAt }
+            : {}),
           updatedAt: now,
         };
+        // 清空语义：合并结果无对应字段时显式剔除（避免残留旧值）
+        if (live.queries === undefined) delete record.queries;
+        if (live.bindings === undefined) delete record.bindings;
+        if (live.dataUpdatedAt === undefined) delete record.dataUpdatedAt;
         reindexOrigin(existing.origin, record.origin, record.id);
         await writeRecord(record);
         return { ok: true, record };
       }
 
+      const live = mergeLiveFields(null, fields, now);
+      if (!live.ok) return { ok: false, status: 400, errors: live.errors };
       const record: DashboardRecord = {
         id: `dash_${crypto.randomBytes(4).toString("hex")}`,
         title:
@@ -378,6 +599,11 @@ export function createDashboardStore(opts: { dir: string }): DashboardStore {
           ? { sourceNames: fields.sourceNames }
           : {}),
         ...(fields.origin !== undefined ? { origin: fields.origin } : {}),
+        ...(live.queries !== undefined ? { queries: live.queries } : {}),
+        ...(live.bindings !== undefined ? { bindings: live.bindings } : {}),
+        ...(live.dataUpdatedAt !== undefined
+          ? { dataUpdatedAt: live.dataUpdatedAt }
+          : {}),
         createdAt: now,
         updatedAt: now,
       };
@@ -402,11 +628,17 @@ export function createDashboardStore(opts: { dir: string }): DashboardStore {
         fields.title === undefined &&
         fields.prompt === undefined &&
         fields.sourceNames === undefined &&
-        fields.origin === undefined
+        fields.origin === undefined &&
+        fields.queries === undefined &&
+        fields.bindings === undefined &&
+        fields.dataUpdatedAt === undefined
       ) {
         return { ok: false, status: 400, errors: ["无可更新字段"] };
       }
 
+      // 活看板字段按合并后记录复核引用完整性；dataUpdatedAt 缺省保留旧值
+      const live = mergeLiveFields(existing, fields, existing.dataUpdatedAt ?? 0);
+      if (!live.ok) return { ok: false, status: 400, errors: live.errors };
       const record: DashboardRecord = {
         ...existing,
         ...(fields.dsl !== undefined ? { dsl: fields.dsl } : {}),
@@ -416,8 +648,16 @@ export function createDashboardStore(opts: { dir: string }): DashboardStore {
           ? { sourceNames: fields.sourceNames }
           : {}),
         ...(fields.origin !== undefined ? { origin: fields.origin } : {}),
+        ...(live.queries !== undefined ? { queries: live.queries } : {}),
+        ...(live.bindings !== undefined ? { bindings: live.bindings } : {}),
+        ...(live.dataUpdatedAt !== undefined
+          ? { dataUpdatedAt: live.dataUpdatedAt }
+          : {}),
         updatedAt: Date.now(),
       };
+      if (live.queries === undefined) delete record.queries;
+      if (live.bindings === undefined) delete record.bindings;
+      if (live.dataUpdatedAt === undefined) delete record.dataUpdatedAt;
       reindexOrigin(existing.origin, record.origin, record.id);
       await writeRecord(record);
       return { ok: true, record };

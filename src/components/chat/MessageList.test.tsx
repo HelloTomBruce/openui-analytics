@@ -360,6 +360,103 @@ describe("看板收藏", () => {
     expect(toast).toHaveBeenCalledWith("已收藏到看板库", "success");
   });
 
+  it("活看板捕获（P2-A）：execute 轮工具调用 + 直取数组件 → 载荷携带 queries/bindings", async () => {
+    // execute 轮记录挂在看板消息自身（AI SDK data stream 附加）
+    const liveMsg = {
+      ...boardMsg,
+      content:
+        "分析结论\n```openui\nroot = Root([chart, table])\nchart = AnalyticsChart(\"bar\", \"t\", \"s\", \"channel\", [{\"channel\":\"TikTok Ads\",\"deals\":186},{\"channel\":\"Google Ads\",\"deals\":152}], [])\ntable = DataTable(\"明细\", [], [{\"channel\":\"TikTok Ads\",\"deals\":186},{\"channel\":\"Google Ads\",\"deals\":152}])\n```",
+      toolInvocations: [
+        {
+          toolCallId: "call-1",
+          toolName: "pg1_execute_sql",
+          args: { sql: "SELECT channel, deals FROM deals" },
+          state: "result",
+          result: {
+            rows: [
+              { channel: "TikTok Ads", deals: 186 },
+              { channel: "Google Ads", deals: 152 },
+            ],
+          },
+        },
+      ],
+    } as unknown as Message;
+    const onFavorite = vi.fn<
+      (input: import("@/hooks/useDashboards").FavoriteDashboardInput) => Promise<FavoriteResult>
+    >(() => Promise.resolve({ ok: true }));
+    render(
+      <MessageList
+        {...baseProps}
+        messages={[userMsg, liveMsg]}
+        activeSources={[{ id: "pg1", name: "营销库" }]}
+        onFavoriteDashboard={onFavorite}
+      />
+    );
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /收藏看板（消息 b1）/ }));
+    });
+
+    expect(onFavorite).toHaveBeenCalledTimes(1);
+    const payload = onFavorite.mock.calls[0][0];
+    expect(payload.dsl).toContain("root = Root([chart, table])");
+    expect(payload.sourceNames).toEqual(["营销库"]);
+    // 直取数组件绑定；q_ 前缀 id 与 sql payload 原文
+    expect(payload.queries).toHaveLength(1);
+    const [captured] = payload.queries ?? [];
+    expect(captured).toMatchObject({
+      sourceId: "pg1",
+      kind: "sql",
+      payload: "SELECT channel, deals FROM deals",
+    });
+    expect(captured.id).toMatch(/^q_[0-9a-z]+$/);
+    expect(payload.bindings).toEqual({
+      chart: captured.id,
+      table: captured.id,
+    });
+  });
+
+  it("活看板捕获（P2-A）：derived 组件（计算列）不进 bindings，载荷不携带活看板字段", async () => {
+    const derivedMsg = {
+      ...boardMsg,
+      content:
+        "分析结论\n```openui\nroot = Root([derived])\nderived = AnalyticsChart(\"bar\", \"t\", \"s\", \"channel\", [{\"channel\":\"TikTok Ads\",\"cac\":16.2},{\"channel\":\"Google Ads\",\"cac\":19.5}], [])\n```",
+      toolInvocations: [
+        {
+          toolCallId: "call-1",
+          toolName: "pg1_execute_sql",
+          args: { sql: "SELECT channel, leads, deals FROM deals" },
+          state: "result",
+          result: {
+            rows: [
+              { channel: "TikTok Ads", leads: 4200, deals: 186 },
+              { channel: "Google Ads", leads: 3800, deals: 152 },
+            ],
+          },
+        },
+      ],
+    } as unknown as Message;
+    const onFavorite = vi.fn<
+      (input: import("@/hooks/useDashboards").FavoriteDashboardInput) => Promise<FavoriteResult>
+    >(() => Promise.resolve({ ok: true }));
+    render(
+      <MessageList
+        {...baseProps}
+        messages={[userMsg, derivedMsg]}
+        activeSources={[{ id: "pg1", name: "营销库" }]}
+        onFavoriteDashboard={onFavorite}
+      />
+    );
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /收藏看板（消息 b1）/ }));
+    });
+
+    const payload = onFavorite.mock.calls[0][0];
+    expect(payload.queries).toBeUndefined();
+    expect(payload.bindings).toBeUndefined();
+  });
+
   it("已收藏（按 favoritedMessageIds 判定）显示实心态「已收藏」；再点仍调用（覆盖更新语义）", async () => {
     const onFavorite = vi.fn<() => Promise<FavoriteResult>>(
       () => Promise.resolve({ ok: true })

@@ -1,9 +1,11 @@
 /**
  * 看板快照文件（.openui.json）导出/导入/文件名工具。
  * 快照 = 单条收藏记录的完整 JSON；导入时 origin 置空（视为手动导入，不与消息挂钩）。
+ * 活看板（P2-A）：queries/bindings 随快照透传（新版快照往返保活）；
+ * v0.1 旧快照无这些字段 → 缺省只读收藏，导入不报错。深层校验以服务端为准。
  */
 // 仅取类型（编译期擦除，不把 server-only 存储层打进客户端包）
-import type { DashboardRecord } from "./dashboardStore";
+import type { DashboardQuery, DashboardRecord } from "./dashboardStore";
 
 export const SNAPSHOT_EXTENSION = ".openui.json";
 
@@ -23,11 +25,48 @@ export interface SnapshotInput {
   title?: string;
   prompt?: string;
   sourceNames?: string[];
+  /** 活看板：导出记录携带时透传（形态宽松，服务端二次校验） */
+  queries?: DashboardQuery[];
+  bindings?: Record<string, string>;
+}
+
+/** 形态宽松的活看板字段透传：queries（对象数组）/ bindings（字符串映射） */
+function passthroughLiveFields(rec: Record<string, unknown>): {
+  queries?: DashboardQuery[];
+  bindings?: Record<string, string>;
+} {
+  const out: { queries?: DashboardQuery[]; bindings?: Record<string, string> } =
+    {};
+  if (Array.isArray(rec.queries)) {
+    const queries = rec.queries.filter(
+      (q): q is DashboardQuery =>
+        typeof q === "object" &&
+        q !== null &&
+        typeof (q as DashboardQuery).id === "string" &&
+        typeof (q as DashboardQuery).sourceId === "string" &&
+        typeof (q as DashboardQuery).payload === "string"
+    );
+    if (queries.length > 0) out.queries = queries;
+  }
+  if (
+    typeof rec.bindings === "object" &&
+    rec.bindings !== null &&
+    !Array.isArray(rec.bindings)
+  ) {
+    const entries = Object.entries(
+      rec.bindings as Record<string, unknown>
+    ).filter(([, v]) => typeof v === "string") as [string, string][];
+    if (entries.length > 0) {
+      out.bindings = Object.fromEntries(entries);
+    }
+  }
+  return out;
 }
 
 /**
  * 解析并校验快照文本：JSON 可解析 + dsl 非空字符串。
- * 可选字段（title/prompt/sourceNames）做形态收敛，服务端仍会二次校验（含 2MB 上限）。
+ * 可选字段（title/prompt/sourceNames/queries/bindings）做形态收敛，服务端仍会
+ * 二次校验（含 2MB 上限与 bindings→queries 引用完整性）。
  */
 export function parseDashboardSnapshot(
   text: string
@@ -62,6 +101,7 @@ export function parseDashboardSnapshot(
       ...(Array.isArray(rec.sourceNames)
         ? { sourceNames: rec.sourceNames.map(String) }
         : {}),
+      ...passthroughLiveFields(rec),
     },
   };
 }

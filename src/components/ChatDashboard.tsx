@@ -109,6 +109,7 @@ export default function ChatDashboard() {
     favorite: favoriteDashboard,
     rename: renameDashboard,
     remove: removeDashboard,
+    refreshOne: refreshDashboardData,
   } = useDashboards();
   // 星标判定集合：收藏记录的 origin.messageId
   const favoritedMessageIds = useMemo(() => {
@@ -284,6 +285,23 @@ export default function ChatDashboard() {
       toast(ok ? "已重命名" : "重命名失败", ok ? "success" : "error");
     },
     [renameDashboard]
+  );
+
+  // 活看板数据刷新：重放 queries（零 LLM）→ 重新拉取完整记录（含新 dsl）回写预览。
+  // 函数式回写 + id 匹配守卫：刷新期间用户关闭预览或切换到其他看板时，
+  // 迟到的刷新结果不得重新打开/覆盖预览
+  const handleRefreshDashboard = useCallback(
+    async (id: string) => {
+      const res = await refreshDashboardData(id);
+      if (!res.ok) return res;
+      const record = await getDashboard(id);
+      if (!record) {
+        return { ok: false as const, error: "刷新成功但获取最新看板失败" };
+      }
+      setPreviewDashboard((prev) => (prev?.id === id ? record : prev));
+      return { ok: true as const, record, stale: res.stale };
+    },
+    [refreshDashboardData, getDashboard]
   );
 
   const handleDeleteDashboard = useCallback(
@@ -485,6 +503,7 @@ export default function ChatDashboard() {
         onRename={handleRenameDashboard}
         onDelete={handleDeleteDashboard}
         onAction={handlePreviewAction}
+        onRefresh={handleRefreshDashboard}
       />
 
       {/* 分析方法论查看（合并卡集：内置 + 用户覆盖） */}

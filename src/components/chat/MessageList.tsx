@@ -7,6 +7,7 @@ import { OpenUIRenderer } from "@/components/OpenUIRenderer";
 import { Hint } from "@/components/ui/hint";
 import { Skeleton } from "@/components/ui/skeleton";
 import { extractOpenUI } from "@/lib/extractOpenUI";
+import { captureDashboardQueries } from "@/lib/dashboardCapture";
 import { toast } from "@/lib/toast";
 import type { FavoriteDashboardInput, FavoriteResult } from "@/hooks/useDashboards";
 
@@ -299,7 +300,10 @@ export function MessageList({
   /**
    * 看板收藏：按消息组装收藏载荷（dsl 提取自消息内容；prompt 取该消息之前
    * 最近一条用户提问；sourceNames 归档当前启用源名称；origin.messageId 用于
-   * 重复收藏覆盖判定）。结果 toast：新收藏/覆盖更新/失败（含 413 等服务端错误）。
+   * 重复收藏覆盖判定）。活看板生成期捕获（P2-A）：从该消息自身的 execute 轮
+   * 工具调用记录提取「被看板组件直接引用的取数查询」，随载荷入服务端看板库；
+   * 捕获失败或无直取数组件时静默降级为纯快照收藏。结果 toast：新收藏/覆盖
+   * 更新/失败（含 413 等服务端错误）。
    */
   const [pendingFavoriteId, setPendingFavoriteId] = useState<string | null>(null);
 
@@ -320,6 +324,20 @@ export function MessageList({
         }
       }
 
+      // SAFETY: 同 MessageItem——AI SDK v4 Message 运行时附加 toolInvocations，
+      // 仅做可选读取；捕获引擎内部吞错，绝不阻塞收藏主流程
+      const toolInvocations =
+        (
+          messages[idx] as unknown as {
+            toolInvocations?: ToolInvocationState[];
+          }
+        ).toolInvocations || [];
+      const capture = captureDashboardQueries(
+        openuiPart,
+        toolInvocations,
+        activeSources ?? []
+      );
+
       const wasFavorited = favoritedMessageIds?.has(msgId) ?? false;
       setPendingFavoriteId(msgId);
       try {
@@ -328,6 +346,11 @@ export function MessageList({
           prompt,
           sourceNames: activeSources?.map((s) => s.name),
           origin: { messageId: msgId },
+          // 空捕获不携带字段（服务端视为未提供；重复收藏时也无需清空——
+          // 旧记录若已有捕获，同消息重跑 execute 后捕获会整体覆盖）
+          ...(capture.queries.length > 0
+            ? { queries: capture.queries, bindings: capture.bindings }
+            : {}),
         });
         if (res.ok) {
           toast(wasFavorited ? "收藏已更新" : "已收藏到看板库", "success");

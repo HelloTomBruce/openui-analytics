@@ -388,6 +388,13 @@ function DashboardListItem({
             </div>
             <div className="mt-0.5 flex items-center gap-2 text-[10px] text-slate-400">
               <span>{formatSessionTime(dashboard.updatedAt)}</span>
+              {dashboard.dataUpdatedAt !== undefined && (
+                <span
+                  title={`数据确认于 ${new Date(dashboard.dataUpdatedAt).toLocaleString()}`}
+                >
+                  数据 {formatSessionTime(dashboard.dataUpdatedAt)}
+                </span>
+              )}
               {dashboard.sourceNames && dashboard.sourceNames.length > 0 && (
                 <span className="px-1 py-0.5 rounded bg-slate-100 dark:bg-slate-800 truncate">
                   {dashboard.sourceNames.join(" / ")}

@@ -3,7 +3,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { authHeaders } from "@/lib/auth";
 // 仅取类型（编译期擦除，不会把 server-only 的 dashboardStore 打进客户端包）
-import type { DashboardRecord, DashboardSummary } from "@/lib/dashboardStore";
+import type {
+  DashboardQuery,
+  DashboardRecord,
+  DashboardSummary,
+} from "@/lib/dashboardStore";
 
 /**
  * 看板收藏库客户端状态：列表 / 收藏 / 重命名 / 删除。
@@ -17,17 +21,27 @@ export interface FavoriteDashboardInput {
   prompt?: string;
   sourceNames?: string[];
   origin?: { sessionId?: string; messageId?: string };
+  /** 活看板（P2-A）：生成期捕获的直取数查询与组件绑定；缺省 = 纯快照收藏 */
+  queries?: DashboardQuery[];
+  bindings?: Record<string, string>;
 }
 
 export type FavoriteResult = { ok: true } | { ok: false; error: string };
 
-/** 错误体归一：优先展开服务端 errors 数组，兜底状态码文案 */
+/** 活看板刷新结果：成功附最新摘要与 stale 组件列表；失败附归一文案 */
+export type DashboardRefreshResult =
+  | { ok: true; summary: DashboardSummary; stale: string[] }
+  | { ok: false; error: string };
+
+/** 错误体归一：优先展开服务端 errors 数组，其次单条 error 文案，兜底状态码文案 */
 async function readErrorMessage(res: Response, fallback: string): Promise<string> {
   const body = await res.json().catch(() => null);
   const errors = (body as { errors?: unknown } | null)?.errors;
   if (Array.isArray(errors) && errors.every((e) => typeof e === "string")) {
     return errors.join("；");
   }
+  const single = (body as { error?: unknown } | null)?.error;
+  if (typeof single === "string" && single.length > 0) return single;
   return `${fallback}（${res.status}）`;
 }
 
@@ -151,5 +165,41 @@ export function useDashboards() {
     [refresh]
   );
 
-  return { summaries, loaded, refresh, get, favorite, rename, remove };
+  /**
+   * 活看板数据刷新（P2-A）：POST /api/dashboards/:id/refresh（零 LLM）。
+   * 成功回填摘要（dataUpdatedAt 已由服务端更新）并同步列表；stale 为保留旧数据的
+   * 组件 statementId 列表（部分过期）。失败：400 静态快照 / 502 数据源不可用 / 其他。
+   */
+  const refreshOne = useCallback(
+    async (id: string): Promise<DashboardRefreshResult> => {
+      try {
+        const res = await fetch(
+          `/api/dashboards/${encodeURIComponent(id)}/refresh`,
+          { method: "POST", headers: { ...authHeaders() } }
+        );
+        if (!res.ok) {
+          return { ok: false, error: await readErrorMessage(res, "刷新失败") };
+        }
+        const body = (await res.json().catch(() => null)) as {
+          dashboard?: DashboardSummary;
+          stale?: unknown;
+        } | null;
+        if (!body || !body.dashboard) {
+          return { ok: false, error: "刷新失败：响应缺少看板摘要" };
+        }
+        const stale = Array.isArray(body.stale)
+          ? body.stale.filter((s): s is string => typeof s === "string")
+          : [];
+        setSummaries((prev) =>
+          prev.map((s) => (s.id === body.dashboard!.id ? body.dashboard! : s))
+        );
+        return { ok: true, summary: body.dashboard, stale };
+      } catch {
+        return { ok: false, error: "刷新失败：网络错误" };
+      }
+    },
+    []
+  );
+
+  return { summaries, loaded, refresh, get, favorite, rename, remove, refreshOne };
 }

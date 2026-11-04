@@ -9,6 +9,7 @@ import {
   DASHBOARD_DSL_MAX,
   type DashboardRecord,
 } from "./dashboardStore";
+import { captureDashboardQueries } from "./dashboardCapture";
 
 let dir: string;
 let store: ReturnType<typeof createDashboardStore>;
@@ -216,5 +217,235 @@ describe("deriveDashboardTitle 与 generateSessionTitle 规则对齐", () => {
     );
     expect(deriveDashboardTitle("")).toBeNull();
     expect(deriveDashboardTitle(undefined)).toBeNull();
+  });
+});
+
+describe("活看板字段（P2-A：queries/bindings/dataUpdatedAt）", () => {
+  const queries = [
+    {
+      id: "q_00af5f39",
+      sourceId: "pg1",
+      kind: "sql" as const,
+      payload: "SELECT channel, deals FROM deals",
+    },
+  ];
+
+  it("收藏携带合法 queries/bindings：落盘回读完整，dataUpdatedAt 缺省置当前时间", async () => {
+    const before = Date.now();
+    const verdict = await store.upsert({
+      dsl: "root = Root([chart])",
+      prompt: "p",
+      origin: { messageId: "m1" },
+      queries,
+      bindings: { chart: "q_00af5f39" },
+    });
+    expect(verdict.ok).toBe(true);
+    if (!verdict.ok) return;
+
+    expect(verdict.record.queries).toEqual(queries);
+    expect(verdict.record.bindings).toEqual({ chart: "q_00af5f39" });
+    expect(verdict.record.dataUpdatedAt).toBeGreaterThanOrEqual(before);
+
+    const got = await store.get(verdict.record.id);
+    expect(got?.queries).toEqual(queries);
+    expect(got?.bindings).toEqual({ chart: "q_00af5f39" });
+    expect(got?.dataUpdatedAt).toBe(verdict.record.dataUpdatedAt);
+
+    // 摘要含活看板字段（预览徽标等 UI 数据）
+    const summary = (await store.list())[0];
+    expect(summary.queries).toEqual(queries);
+    expect(summary.dataUpdatedAt).toBe(verdict.record.dataUpdatedAt);
+  });
+
+  it("校验：id 前缀/sourceId/kind/payload 形态、重复 id、bindings 键值与悬空引用 400", async () => {
+    const cases: Array<Record<string, unknown>> = [
+      { dsl: "x", queries: [{ ...queries[0], id: "nope" }], bindings: {} },
+      { dsl: "x", queries: [{ ...queries[0], sourceId: "PG_1" }] },
+      { dsl: "x", queries: [{ ...queries[0], kind: "script" }] },
+      { dsl: "x", queries: [{ ...queries[0], payload: "  " }] },
+      {
+        dsl: "x",
+        queries: [queries[0], { ...queries[0], payload: "SELECT 2" }],
+      },
+      { dsl: "x", queries, bindings: { "bad-key!": "q_00af5f39" } },
+      { dsl: "x", queries, bindings: { chart: "q_missing" } },
+      { dsl: "x", bindings: { chart: "q_00af5f39" } }, // 无 queries
+      { dsl: "x", queries: "nope" },
+      { dsl: "x", queries, bindings: [1, 2] },
+      { dsl: "x", dataUpdatedAt: "yesterday" },
+    ];
+    for (const body of cases) {
+      const res = await store.upsert(body);
+      expect(res).toMatchObject({ ok: false, status: 400 });
+    }
+  });
+
+  it("覆盖收藏（同 messageId）：捕获结果整体替换；空数组清空旧 queries/bindings/dataUpdatedAt", async () => {
+    const first = await store.upsert({
+      dsl: "root = Root([chart])",
+      origin: { messageId: "m1" },
+      queries,
+      bindings: { chart: "q_00af5f39" },
+    });
+    if (!first.ok) throw new Error("seed failed");
+    expect(first.record.dataUpdatedAt).toBeDefined();
+
+    // 新捕获（不同查询）
+    const nextQueries = [
+      { id: "q_11111111", sourceId: "pg1", kind: "sql" as const, payload: "SELECT 2" },
+    ];
+    const second = await store.upsert({
+      dsl: "root = Root([chart])",
+      origin: { messageId: "m1" },
+      queries: nextQueries,
+      bindings: { chart: "q_11111111" },
+    });
+    expect(second.ok && second.record.queries).toEqual(nextQueries);
+    expect(second.ok && second.record.bindings).toEqual({ chart: "q_11111111" });
+
+    // 再收藏为纯快照（queries 显式空数组）→ 活看板字段全部清除
+    const third = await store.upsert({
+      dsl: "root = Root([])",
+      origin: { messageId: "m1" },
+      queries: [],
+    });
+    expect(third.ok).toBe(true);
+    if (!third.ok) return;
+    expect(third.record.queries).toBeUndefined();
+    expect(third.record.bindings).toBeUndefined();
+    expect(third.record.dataUpdatedAt).toBeUndefined();
+  });
+
+  it("未提供活看板字段的覆盖收藏：保留旧记录的 queries/bindings（纯 dsl 更新不动绑定）", async () => {
+    const first = await store.upsert({
+      dsl: "root = Root([chart])",
+      origin: { messageId: "m1" },
+      queries,
+      bindings: { chart: "q_00af5f39" },
+    });
+    if (!first.ok) throw new Error("seed failed");
+    const second = await store.upsert({
+      dsl: "root = Root([chart, insight])",
+      origin: { messageId: "m1" },
+    });
+    expect(second.ok && second.record.queries).toEqual(queries);
+    expect(second.ok && second.record.bindings).toEqual({
+      chart: "q_00af5f39",
+    });
+  });
+
+  it("update 局部更新：可单独清 queries；bindings 悬空引用（合并后）拒绝", async () => {
+    const created = await store.upsert({
+      dsl: "root = Root([chart])",
+      origin: { messageId: "m1" },
+      queries,
+      bindings: { chart: "q_00af5f39" },
+    });
+    if (!created.ok) throw new Error("seed failed");
+    const { id } = created.record;
+
+    // 悬空引用：update 只改 bindings 指向不存在的 query
+    const bad = await store.update(id, { bindings: { chart: "q_ghost" } });
+    expect(bad).toMatchObject({ ok: false, status: 400 });
+
+    // 清空 queries → bindings 随之清空（合并语义），dataUpdatedAt 一并清除
+    const cleared = await store.update(id, { queries: [] });
+    expect(cleared.ok && cleared.record.queries).toBeUndefined();
+    expect(cleared.ok && cleared.record.bindings).toBeUndefined();
+    expect(cleared.ok && cleared.record.dataUpdatedAt).toBeUndefined();
+  });
+
+  it("v0.1 旧记录（无 queries 字段）读取走只读路径不报错；导入落库不带活看板字段", async () => {
+    // 旧版本落盘文件：只有 v0.1 字段
+    fs.writeFileSync(
+      path.join(dir, "dash_00000009.json"),
+      JSON.stringify(
+        seedRecord({
+          id: "dash_00000009",
+          origin: { messageId: "old-1" },
+        })
+      ),
+      "utf-8"
+    );
+    const got = await store.get("dash_00000009");
+    expect(got).not.toBeNull();
+    expect(got?.queries).toBeUndefined();
+    expect(got?.bindings).toBeUndefined();
+    expect(got?.dataUpdatedAt).toBeUndefined();
+    expect((await store.list()).map((s) => s.id)).toContain("dash_00000009");
+
+    // 模拟旧快照导入（无 queries/bindings 字段）→ 正常入库
+    const imported = await store.upsert({
+      dsl: "root = Root([])",
+      title: "旧快照导入",
+    });
+    expect(imported.ok).toBe(true);
+    if (!imported.ok) return;
+    expect(imported.record.queries).toBeUndefined();
+    expect(imported.record.bindings).toBeUndefined();
+    expect(imported.record.dataUpdatedAt).toBeUndefined();
+  });
+
+  it("跨层集成（完成定义全链路）：execute 记录 → 捕获 → 入库 → 回读，derived 不进 bindings", async () => {
+    const dsl = [
+      'root = Root([chart, table, derived])',
+      'chart = AnalyticsChart("bar", "t", "s", "channel", [{"channel":"TikTok Ads","deals":186},{"channel":"Google Ads","deals":152}], [])',
+      'table = DataTable("明细", [], [{"channel":"TikTok Ads","deals":186},{"channel":"Google Ads","deals":152}])',
+      'derived = AnalyticsChart("bar", "CAC", "s", "channel", [{"channel":"TikTok Ads","cac":16.2},{"channel":"Google Ads","cac":19.5}], [])',
+    ].join("\n");
+    const toolCalls = [
+      {
+        toolCallId: "call-1",
+        state: "result",
+        toolName: "pg1_execute_sql",
+        args: { sql: "SELECT channel, deals FROM deals" },
+        result: {
+          rows: [
+            { channel: "TikTok Ads", deals: 186 },
+            { channel: "Google Ads", deals: 152 },
+          ],
+        },
+      },
+      {
+        toolCallId: "call-2",
+        state: "result",
+        toolName: "cross_source_link",
+        args: { zentao_project_id: "42" },
+        result: { confidence: "none" },
+      },
+    ];
+
+    // 客户端捕获（MessageList 同款调用）→ 入库载荷
+    const capture = captureDashboardQueries(
+      dsl,
+      toolCalls,
+      [{ id: "pg1" }, { id: "gl1" }]
+    );
+    expect(Object.keys(capture.bindings)).toEqual(["chart", "table"]);
+
+    const verdict = await store.upsert({
+      dsl,
+      origin: { messageId: "m-live" },
+      queries: capture.queries,
+      bindings: capture.bindings,
+    });
+    expect(verdict.ok).toBe(true);
+    if (!verdict.ok) return;
+
+    // 服务端回读：queries 合法（q_ 前缀/sql payload）、bindings 只含直取数组件
+    const got = await store.get(verdict.record.id);
+    expect(got?.queries).toHaveLength(1);
+    expect(got?.queries?.[0]).toMatchObject({
+      sourceId: "pg1",
+      kind: "sql",
+      payload: "SELECT channel, deals FROM deals",
+    });
+    expect(got?.queries?.[0].id).toMatch(/^q_[0-9a-z]+$/);
+    expect(got?.bindings).toEqual({
+      chart: got?.queries?.[0].id,
+      table: got?.queries?.[0].id,
+    });
+    expect(got?.bindings).not.toHaveProperty("derived");
+    expect(got?.dataUpdatedAt).toBeGreaterThan(0);
   });
 });

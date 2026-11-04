@@ -73,6 +73,63 @@ describe("parseDashboardSnapshot", () => {
     );
     expect(verdict).toEqual({ ok: true, value: { dsl: "root = Root([])" } });
   });
+
+  it("v0.1 旧快照（无 queries/bindings 字段）：正常解析为只读收藏，不报错", () => {
+    // v0.1 导出件的字段全集：无任何活看板字段
+    const v01 = JSON.stringify({
+      id: "dash_ab12cd34",
+      title: "v0.1 旧看板",
+      dsl: "root = Root([table])",
+      prompt: "旧提问",
+      sourceNames: ["GitLab"],
+      origin: { messageId: "old" },
+      createdAt: 1,
+      updatedAt: 2,
+    });
+    const verdict = parseDashboardSnapshot(v01);
+    expect(verdict).toEqual({
+      ok: true,
+      value: {
+        dsl: "root = Root([table])",
+        title: "v0.1 旧看板",
+        prompt: "旧提问",
+        sourceNames: ["GitLab"],
+      },
+    });
+  });
+
+  it("活看板快照往返：queries/bindings 透传保活，垃圾形态字段剔除", () => {
+    const queries = [
+      { id: "q_00af5f39", sourceId: "pg1", kind: "sql", payload: "SELECT 1" },
+    ];
+    const verdict = parseDashboardSnapshot(
+      JSON.stringify({
+        dsl: "root = Root([chart])",
+        queries,
+        bindings: { chart: "q_00af5f39" },
+        dataUpdatedAt: 1761811200000,
+      })
+    );
+    expect(verdict).toEqual({
+      ok: true,
+      value: {
+        dsl: "root = Root([chart])",
+        queries,
+        bindings: { chart: "q_00af5f39" },
+      },
+    });
+
+    // 形态垃圾：非对象 queries 项剔除、非字符串 binding 值剔除
+    const dirty = parseDashboardSnapshot(
+      JSON.stringify({
+        dsl: "x",
+        queries: [queries[0], "garbage", null],
+        bindings: { a: "q_00af5f39", b: 123 },
+      })
+    );
+    expect(dirty.ok && dirty.value.queries).toEqual(queries);
+    expect(dirty.ok && dirty.value.bindings).toEqual({ a: "q_00af5f39" });
+  });
 });
 
 describe("downloadDashboardSnapshot", () => {

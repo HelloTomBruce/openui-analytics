@@ -334,3 +334,6 @@ export const serverLibrary = createLibrary({
   root: "Root",
 });
 
+/** 服务端 DSL 序列化（活看板刷新回填用）：与 prompt/schema 同源，无客户端依赖 */
+export { jsonToOpenUI } from "@openuidev/lang-core";
+
