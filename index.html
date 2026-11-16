@@ -1,0 +1,507 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OpenUI Analytics — 对话式生成数据分析看板</title>
+<meta name="description" content="开源对话式 BI:自然语言提问,多数据源取数,流式生成 OpenUI Lang 声明式看板。Plan-first、只读双保险、断线重连、双层评测。">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+
+body{margin:0;background:#ffffff;font-family:"Inter","Noto Sans SC",sans-serif;color:#0f172a}
+a{color:#2563eb;text-decoration:none}
+a:hover{color:#1d4ed8}
+h1,h2,h3{font-family:"Space Grotesk","Noto Sans SC",sans-serif;margin:0}
+code,pre{font-family:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace}
+
+@media (max-width: 960px) {
+  .g-cap,.g-def,.g-act,.g-charts,.g-qs,.g-two { grid-template-columns: 1fr !important; }
+  .g-kpi { grid-template-columns: repeat(2,1fr) !important; }
+  .g-arch { flex-direction: column !important; gap: 16px !important; }
+  .chev { display: none !important; }
+  .g-navlinks { display: none !important; }
+  .g-h1 { font-size: 34px !important; }
+  .g-stats { flex-wrap: wrap; }
+  .g-stats > div { width: 50%; border-right: none !important; border-bottom: 1px solid #e2e8f0; }
+}
+</style>
+</head>
+<body>
+
+<helmet>
+<style>
+body{margin:0;background:#ffffff;font-family:"Inter","Noto Sans SC",sans-serif;color:#0f172a}
+a{color:#2563eb;text-decoration:none}
+a:hover{color:#1d4ed8}
+h1,h2,h3{font-family:"Space Grotesk","Noto Sans SC",sans-serif;margin:0}
+code,pre{font-family:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace}
+</style>
+</helmet>
+<div style="width:100%;min-height:2900px;background:#ffffff">
+
+<!-- ===== Nav ===== -->
+<div style="width:100%;border-bottom:1px solid #e2e8f0;background:#ffffff">
+  <div style="max-width:1120px;margin:0 auto;padding:0 32px;height:72px;display:flex;align-items:center;gap:32px">
+    <a href="#top" style="display:flex;align-items:center;gap:10px;color:#0f172a">
+      <svg width="28" height="28" viewBox="0 0 28 28" fill="none" aria-hidden="true">
+        <rect x="2" y="14" width="5" height="12" rx="1.5" fill="#2563eb"/>
+        <rect x="11.5" y="8" width="5" height="18" rx="1.5" fill="#3b82f6"/>
+        <rect x="21" y="3" width="5" height="23" rx="1.5" fill="#93c5fd"/>
+      </svg>
+      <span style="font-family:'Space Grotesk','Noto Sans SC',sans-serif;font-size:18px;font-weight:700">OpenUI Analytics</span>
+    </a>
+    <div style="display:flex;align-items:center;gap:28px;margin-left:auto;font-size:14px;font-weight:500">
+      <a href="#features">核心能力</a>
+      <a href="#architecture">架构</a>
+      <a href="#guards">运行时防线</a>
+      <a href="#quickstart">快速开始</a>
+      <a href="https://github.com/HelloTomBruce/openui-analytics" target="_blank" rel="noopener" aria-label="GitHub 仓库"
+         style="display:inline-flex;align-items:center;gap:8px;height:44px;padding:0 18px;background:#0f172a;color:#ffffff;border-radius:10px">
+        <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+        GitHub
+      </a>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Hero ===== -->
+<div id="top" style="width:100%;background:#f8fafc;border-bottom:1px solid #e2e8f0">
+  <div style="max-width:1120px;margin:0 auto;padding:88px 32px 64px;display:flex;flex-direction:column;align-items:center;text-align:center;gap:28px">
+    <span style="display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 16px;border:1px solid #bfdbfe;background:#eff6ff;color:#1d4ed8;border-radius:999px;font-size:13px;font-weight:600">
+      <span style="width:8px;height:8px;border-radius:50%;background:#2563eb"></span>
+      开源 · 对话式 BI · Plan-first
+    </span>
+    <h1 class="g-h1" style="font-size:56px;line-height:1.15;font-weight:700;letter-spacing:-0.02em;max-width:880px">用对话，生成可交互的<br>数据分析看板</h1>
+    <p style="margin:0;font-size:19px;line-height:1.7;color:#475569;max-width:760px">
+      自然语言提问 → <b style="color:#0f172a">关系型数据库 / 任意 MCP 数据源 / 本地文件（CSV·Excel）</b> 多源取数 →
+      流式渲染 <b style="color:#0f172a">OpenUI Lang</b> 声明式看板。全程只读守卫、可中止、可评测。
+    </p>
+    <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;justify-content:center">
+      <a href="https://github.com/HelloTomBruce/openui-analytics" target="_blank" rel="noopener"
+         style="display:inline-flex;align-items:center;gap:10px;height:48px;padding:0 24px;background:#2563eb;color:#ffffff;border-radius:12px;font-size:15px;font-weight:600">
+        <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+        Star on GitHub
+      </a>
+      <a href="#quickstart" style="display:inline-flex;align-items:center;height:48px;padding:0 24px;border:1px solid #cbd5e1;background:#ffffff;color:#0f172a;border-radius:12px;font-size:15px;font-weight:600">快速开始</a>
+    </div>
+    <pre style="margin:8px 0 0;padding:16px 24px;background:#0f172a;color:#e2e8f0;border-radius:12px;font-size:14px;line-height:1.6;text-align:left"><code>pnpm install && pnpm dev   <span style="color:#64748b"># http://localhost:3006</span></code></pre>
+    <div style="display:flex;gap:0;margin-top:16px;border:1px solid #e2e8f0;border-radius:14px;background:#ffffff;overflow:hidden">
+      <div style="padding:20px 36px;text-align:center;border-right:1px solid #e2e8f0">
+        <div style="font-family:'Space Grotesk',sans-serif;font-size:28px;font-weight:700;color:#2563eb">5</div>
+        <div style="font-size:13px;color:#64748b;margin-top:2px">Workspace 包</div>
+      </div>
+      <div style="padding:20px 36px;text-align:center;border-right:1px solid #e2e8f0">
+        <div style="font-family:'Space Grotesk',sans-serif;font-size:28px;font-weight:700;color:#2563eb">24</div>
+        <div style="font-size:13px;color:#64748b;margin-top:2px">声明式组件</div>
+      </div>
+      <div style="padding:20px 36px;text-align:center;border-right:1px solid #e2e8f0">
+        <div style="font-family:'Space Grotesk',sans-serif;font-size:28px;font-weight:700;color:#2563eb">10</div>
+        <div style="font-size:13px;color:#64748b;margin-top:2px">内置方法卡</div>
+      </div>
+      <div style="padding:20px 36px;text-align:center">
+        <div style="font-family:'Space Grotesk',sans-serif;font-size:28px;font-weight:700;color:#2563eb">1,000+</div>
+        <div style="font-size:13px;color:#64748b;margin-top:2px">测试用例</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 核心能力 ===== -->
+<div id="features" style="width:100%;padding:88px 0">
+  <div style="max-width:1120px;margin:0 auto;padding:0 32px">
+    <h2 style="font-size:36px;font-weight:700;text-align:center">核心能力</h2>
+    <p style="margin:12px auto 0;text-align:center;font-size:16px;color:#475569;max-width:640px">从提问到看板的全链路，每一环都有确定性的工程兜底</p>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:24px;margin-top:48px">
+      <div style="border:1px solid #e2e8f0;border-radius:14px;padding:28px;background:#ffffff">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.2 1 2V17h6v-.3c0-.8.4-1.5 1-2A7 7 0 0 0 12 2Z"/></svg>
+        <h3 style="font-size:17px;font-weight:600;margin:14px 0 8px">Plan-first 思路确认</h3>
+        <p style="margin:0;font-size:14px;line-height:1.7;color:#475569">新问题先探查表结构、小样本验证，输出思路确认卡再执行——先对齐口径，再烧 token。</p>
+      </div>
+      <div style="border:1px solid #e2e8f0;border-radius:14px;padding:28px;background:#ffffff">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg>
+        <h3 style="font-size:17px;font-weight:600;margin:14px 0 8px">多数据源编排</h3>
+        <p style="margin:0;font-size:14px;line-height:1.7;color:#475569">关系型数据库（PostgreSQL / MySQL / SQLite / ClickHouse）+ 任意 MCP 数据源 + 本地文件（CSV·Excel → DuckDB），统一工具装配，跨源联合分析。</p>
+      </div>
+      <div style="border:1px solid #e2e8f0;border-radius:14px;padding:28px;background:#ffffff">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/></svg>
+        <h3 style="font-size:17px;font-weight:600;margin:14px 0 8px">只读双保险守卫</h3>
+        <p style="margin:0;font-size:14px;line-height:1.7;color:#475569">SQL 词法守卫（仅 SELECT/WITH、禁多语句 DDL/DML、自动 LIMIT 200）+ 方言引擎级只读事务，双保险缺一不可。</p>
+      </div>
+      <div style="border:1px solid #e2e8f0;border-radius:14px;padding:28px;background:#ffffff">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.6-6.4M21 3v6h-6"/></svg>
+        <h3 style="font-size:17px;font-weight:600;margin:14px 0 8px">断线重连 StreamHub</h3>
+        <p style="margin:0;font-size:14px;line-height:1.7;color:#475569">切会话、刷新页面不杀任务：服务端后台续跑、分块缓冲、秒级重放续接，回切输出不断线。</p>
+      </div>
+      <div style="border:1px solid #e2e8f0;border-radius:14px;padding:28px;background:#ffffff">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+        <h3 style="font-size:17px;font-weight:600;margin:14px 0 8px">活看板零 LLM 刷新</h3>
+        <p style="margin:0;font-size:14px;line-height:1.7;color:#475569">收藏看板捕获取数查询，一键刷新按确定性变换重放回填——不走模型往返，贵与漂移都不存在。</p>
+      </div>
+      <div style="border:1px solid #e2e8f0;border-radius:14px;padding:28px;background:#ffffff">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg>
+        <h3 style="font-size:17px;font-weight:600;margin:14px 0 8px">上下文治理</h3>
+        <p style="margin:0;font-size:14px;line-height:1.7;color:#475569">存储层保存完整会话，压缩只作用于发往模型的投影：tool 结果剪枝 + LLM 摘要，长会话不爆窗、不丢史。</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 案例与效果 ===== -->
+<div style="width:100%;padding:88px 0;background:#ffffff">
+  <div style="max-width:1120px;margin:0 auto;padding:0 32px">
+    <h2 style="font-size:36px;font-weight:700;text-align:center">案例与效果</h2>
+    <p style="margin:12px auto 0;text-align:center;font-size:16px;color:#475569;max-width:640px">一次提问，直接得到带结论、带归因、带图表的完整看板（下图为示例数据重建）</p>
+    <!-- 真实收藏看板重建(主案例) -->
+    <div style="margin-top:48px;border:1px solid #e2e8f0;border-radius:16px;overflow:hidden;background:#ffffff;box-shadow:0 12px 32px rgba(15,23,42,0.06)">
+      <div style="padding:16px 22px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+        <div style="display:flex;align-items:center;gap:12px">
+          <span style="font-size:11px;font-weight:700;color:#ffffff;background:#2563eb;border-radius:999px;padding:3px 12px">真实收藏看板</span>
+          <div style="font-size:15px;font-weight:600">渠道 CAC / ROI 对比与预算优化</div>
+        </div>
+        <span style="font-size:11px;color:#64748b">ReportLayout 模板 · 4 MetricCard · 双图表 + 明细表 + 行动清单</span>
+      </div>
+      <div style="background:#f8fafc;padding:22px">
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px">
+          <div style="background:#ffffff;border:1px solid #e2e8f0;border-radius:10px;padding:14px">
+            <div style="font-size:11px;color:#64748b">最优 CAC · TikTok</div>
+            <div style="font-size:20px;font-weight:700;color:#0f172a;margin-top:4px">¥18.20</div>
+            <div style="font-size:11px;color:#16a34a;margin-top:2px">-15.6% vs 7月</div>
+            <div style="font-size:10.5px;color:#94a3b8;margin-top:4px">9月 · ROI 4.80 断层领先</div>
+          </div>
+          <div style="background:#ffffff;border:1px solid #e2e8f0;border-radius:10px;padding:14px">
+            <div style="font-size:11px;color:#64748b">最差 CAC · LinkedIn</div>
+            <div style="font-size:20px;font-weight:700;color:#0f172a;margin-top:4px">¥59.26</div>
+            <div style="font-size:11px;color:#64748b;margin-top:2px">-17.2% vs 7月</div>
+            <div style="font-size:10.5px;color:#94a3b8;margin-top:4px">ROI 2.40 垫底但 CVR 最高</div>
+          </div>
+          <div style="background:#ffffff;border:1px solid #e2e8f0;border-radius:10px;padding:14px">
+            <div style="font-size:11px;color:#64748b">9月混合 CAC</div>
+            <div style="font-size:20px;font-weight:700;color:#0f172a;margin-top:4px">¥27.84</div>
+            <div style="font-size:11px;color:#16a34a;margin-top:2px">重算校验通过</div>
+            <div style="font-size:10.5px;color:#94a3b8;margin-top:4px">spend/leads 与字段一致</div>
+          </div>
+          <div style="background:#ffffff;border:1px solid #e2e8f0;border-radius:10px;padding:14px">
+            <div style="font-size:11px;color:#64748b">错配预算池</div>
+            <div style="font-size:20px;font-weight:700;color:#0f172a;margin-top:4px">¥6,000</div>
+            <div style="font-size:11px;color:#f59e0b;margin-top:2px">Meta+LinkedIn 可调配</div>
+            <div style="font-size:10.5px;color:#94a3b8;margin-top:4px">再分配后线索预计 +11.5%</div>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px">
+          <div style="background:#ffffff;border:1px solid #e2e8f0;border-radius:10px;padding:16px">
+            <div style="font-size:13px;font-weight:600">各渠道 CAC 逐月趋势</div>
+            <div style="font-size:11px;color:#94a3b8;margin-top:2px">CAC 按 spend/leads 重算 · 单位 ¥</div>
+            <svg viewBox="0 0 460 170" width="100%" role="img" aria-label="四个广告渠道 7 到 9 月的 CAC 趋势线,TikTok 最低且持续下降,LinkedIn 最高但改善最快">
+              <line x1="20" y1="30" x2="440" y2="30" stroke="#f1f5f9" stroke-width="1"/>
+              <line x1="20" y1="80" x2="440" y2="80" stroke="#f1f5f9" stroke-width="1"/>
+              <line x1="20" y1="130" x2="440" y2="130" stroke="#e2e8f0" stroke-width="1"/>
+              <polyline points="60,31 230,45 400,60" fill="none" stroke="#ef4444" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+              <polyline points="60,81 230,82 400,88" fill="none" stroke="#f59e0b" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+              <polyline points="60,116 230,120 400,126" fill="none" stroke="#3b82f6" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+              <polyline points="60,135 230,139 400,143" fill="none" stroke="#10b981" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+              <circle cx="400" cy="143" r="4" fill="#10b981"/>
+              <text x="60" y="162" font-size="11" fill="#94a3b8" text-anchor="middle">2026-07</text>
+              <text x="230" y="162" font-size="11" fill="#94a3b8" text-anchor="middle">2026-08</text>
+              <text x="400" y="162" font-size="11" fill="#94a3b8" text-anchor="middle">2026-09</text>
+            </svg>
+            <div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:8px;font-size:11px;color:#475569">
+              <span style="display:inline-flex;align-items:center;gap:5px"><span style="width:9px;height:9px;border-radius:2px;background:#10b981"></span>TikTok Ads</span>
+              <span style="display:inline-flex;align-items:center;gap:5px"><span style="width:9px;height:9px;border-radius:2px;background:#3b82f6"></span>Google Search</span>
+              <span style="display:inline-flex;align-items:center;gap:5px"><span style="width:9px;height:9px;border-radius:2px;background:#f59e0b"></span>Meta Ads</span>
+              <span style="display:inline-flex;align-items:center;gap:5px"><span style="width:9px;height:9px;border-radius:2px;background:#ef4444"></span>LinkedIn Ads</span>
+            </div>
+          </div>
+          <div style="background:#ffffff;border:1px solid #e2e8f0;border-radius:10px;padding:16px">
+            <div style="font-size:13px;font-weight:600">9月预算占比 vs 线索贡献占比</div>
+            <div style="font-size:11px;color:#94a3b8;margin-top:2px">贡献低于花费即错配（Pareto）</div>
+            <svg viewBox="0 0 460 170" width="100%" role="img" aria-label="各渠道预算占比与线索贡献占比对比,TikTok 贡献 45% 而仅花 30%,LinkedIn 花费 15% 仅贡献 7%">
+              <line x1="20" y1="145" x2="440" y2="145" stroke="#e2e8f0" stroke-width="1"/>
+              <rect x="36" y="101" width="30" height="44" rx="3" fill="#94a3b8"/>
+              <rect x="74" y="77" width="30" height="68" rx="3" fill="#3b82f6"/>
+              <rect x="151" y="105" width="30" height="40" rx="3" fill="#94a3b8"/>
+              <rect x="189" y="102" width="30" height="43" rx="3" fill="#3b82f6"/>
+              <rect x="266" y="101" width="30" height="44" rx="3" fill="#94a3b8"/>
+              <rect x="304" y="116" width="30" height="29" rx="3" fill="#3b82f6"/>
+              <rect x="381" y="123" width="30" height="22" rx="3" fill="#94a3b8"/>
+              <rect x="419" y="135" width="30" height="10" rx="3" fill="#3b82f6"/>
+              <text x="70" y="160" font-size="11" fill="#94a3b8" text-anchor="middle">TikTok</text>
+              <text x="185" y="160" font-size="11" fill="#94a3b8" text-anchor="middle">Google</text>
+              <text x="300" y="160" font-size="11" fill="#94a3b8" text-anchor="middle">Meta</text>
+              <text x="415" y="160" font-size="11" fill="#94a3b8" text-anchor="middle">LinkedIn</text>
+            </svg>
+            <div style="display:flex;gap:14px;margin-top:8px;font-size:11px;color:#475569">
+              <span style="display:inline-flex;align-items:center;gap:5px"><span style="width:9px;height:9px;border-radius:2px;background:#94a3b8"></span>花费占比 %</span>
+              <span style="display:inline-flex;align-items:center;gap:5px"><span style="width:9px;height:9px;border-radius:2px;background:#3b82f6"></span>线索贡献占比 %</span>
+            </div>
+          </div>
+        </div>
+        <div style="background:#ffffff;border:1px solid #e2e8f0;border-radius:10px;padding:16px;margin-bottom:16px">
+          <div style="font-size:13px;font-weight:600;margin-bottom:12px">三个月累计效率明细（CAC 重算校验）</div>
+          <div style="font-size:12px;overflow-x:auto">
+            <div style="display:grid;grid-template-columns:1.4fr 1fr 1fr 1fr 1fr 1fr;padding:8px 12px;color:#64748b;border-bottom:1px solid #e2e8f0;min-width:520px">
+              <span>渠道</span><span style="text-align:right">累计花费 (¥)</span><span style="text-align:right">累计线索</span><span style="text-align:right">CAC (重算)</span><span style="text-align:right">平均 ROI</span><span style="text-align:right">平均 CVR %</span>
+            </div>
+            <div style="display:grid;grid-template-columns:1.4fr 1fr 1fr 1fr 1fr 1fr;padding:9px 12px;border-bottom:1px solid #f1f5f9;min-width:520px">
+              <span style="font-weight:600">TikTok Ads</span><span style="text-align:right">40,700</span><span style="text-align:right">2,080</span><span style="text-align:right;color:#16a34a;font-weight:600">19.57</span><span style="text-align:right">4.33</span><span style="text-align:right">2.65</span>
+            </div>
+            <div style="display:grid;grid-template-columns:1.4fr 1fr 1fr 1fr 1fr 1fr;padding:9px 12px;border-bottom:1px solid #f1f5f9;min-width:520px">
+              <span style="font-weight:600">Google Search</span><span style="text-align:right">40,800</span><span style="text-align:right">1,450</span><span style="text-align:right">28.14</span><span style="text-align:right">3.70</span><span style="text-align:right">3.04</span>
+            </div>
+            <div style="display:grid;grid-template-columns:1.4fr 1fr 1fr 1fr 1fr 1fr;padding:9px 12px;border-bottom:1px solid #f1f5f9;min-width:520px">
+              <span style="font-weight:600">Meta Ads</span><span style="text-align:right">45,200</span><span style="text-align:right">1,030</span><span style="text-align:right">43.88</span><span style="text-align:right">2.63</span><span style="text-align:right">2.61</span>
+            </div>
+            <div style="display:grid;grid-template-columns:1.4fr 1fr 1fr 1fr 1fr 1fr;padding:9px 12px;min-width:520px">
+              <span style="font-weight:600">LinkedIn Ads</span><span style="text-align:right">22,000</span><span style="text-align:right">340</span><span style="text-align:right;color:#dc2626;font-weight:600">64.71</span><span style="text-align:right">2.27</span><span style="text-align:right">3.63</span>
+            </div>
+          </div>
+        </div>
+        <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:14px 16px;margin-bottom:14px;display:flex;gap:10px;align-items:flex-start">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1d4ed8" stroke-width="2" stroke-linecap="round" style="flex-shrink:0;margin-top:2px" aria-hidden="true"><path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.2 1 2V17h6v-.3c0-.8.4-1.5 1-2A7 7 0 0 0 12 2Z"/></svg>
+          <span style="font-size:12.5px;line-height:1.7;color:#1e40af"><b>核心结论：</b>TikTok 与 Google 效率领跑且仍在改善；Meta 与 LinkedIn 合计 43.9% 预算仅产出 26.2% 线索。建议再分配约 ¥6,000 → 线索量 +11.5%，混合 CAC 降至 ~¥25；LinkedIn CVR 最高（3.97%），保留基本盘。</span>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
+          <div style="background:#ffffff;border:1px solid #e2e8f0;border-radius:8px;padding:12px">
+            <div style="display:flex;align-items:center;gap:8px"><span style="font-size:10px;font-weight:700;color:#dc2626;background:#fef2f2;border-radius:4px;padding:2px 8px">HIGH</span><span style="font-size:12px;font-weight:600">TikTok 追加 ¥4,000</span></div>
+            <div style="font-size:11px;color:#64748b;margin-top:6px">按 CAC 18.20 测算新增约 220 条线索</div>
+          </div>
+          <div style="background:#ffffff;border:1px solid #e2e8f0;border-radius:8px;padding:12px">
+            <div style="display:flex;align-items:center;gap:8px"><span style="font-size:10px;font-weight:700;color:#dc2626;background:#fef2f2;border-radius:4px;padding:2px 8px">HIGH</span><span style="font-size:12px;font-weight:600">Google 追加 ¥2,000</span></div>
+            <div style="font-size:11px;color:#64748b;margin-top:6px">新增约 77 条线索,巩固第二引擎</div>
+          </div>
+          <div style="background:#ffffff;border:1px solid #e2e8f0;border-radius:8px;padding:12px">
+            <div style="display:flex;align-items:center;gap:8px"><span style="font-size:10px;font-weight:700;color:#f59e0b;background:#fffbeb;border-radius:4px;padding:2px 8px">MED</span><span style="font-size:12px;font-weight:600">LinkedIn 削减 ¥2,000 保留基本盘</span></div>
+            <div style="font-size:11px;color:#64748b;margin-top:6px">CVR 3.97% 最高,保留高质量线索来源</div>
+          </div>
+        </div>
+      </div>
+      <div style="padding:12px 22px;border-top:1px solid #e2e8f0;font-size:12px;color:#64748b;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap">
+        <span>提问:「渠道 CAC / ROI 对比与预算优化(近三个月全量)」→ ReportLayout 报表模板</span>
+        <span style="color:#2563eb;font-weight:600">收藏后可一键零 LLM 刷新数据 ↻</span>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:24px">
+      <!-- 案例 2:转化漏斗 -->
+      <div style="border:1px solid #e2e8f0;border-radius:14px;overflow:hidden;background:#ffffff">
+        <div style="padding:16px 18px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;gap:8px">
+          <div style="font-size:14px;font-weight:600">注册→付费转化漏斗</div>
+          <span style="font-size:11px;font-weight:600;color:#1d4ed8;background:#eff6ff;border-radius:999px;padding:3px 10px">方法卡 · funnel</span>
+        </div>
+        <div style="background:#f8fafc;padding:16px">
+          <svg viewBox="0 0 340 190" width="100%" role="img" aria-label="五阶段转化漏斗,访问到付费转化率 9%">
+            <rect x="20" y="6" width="300" height="26" rx="5" fill="#1d4ed8"/>
+            <text x="170" y="23" font-size="11" fill="#ffffff" text-anchor="middle">访问 12,480 · 100%</text>
+            <rect x="54" y="42" width="232" height="26" rx="5" fill="#2563eb"/>
+            <text x="170" y="59" font-size="11" fill="#ffffff" text-anchor="middle">注册 5,740 · 46%</text>
+            <rect x="88" y="78" width="164" height="26" rx="5" fill="#3b82f6"/>
+            <text x="170" y="95" font-size="11" fill="#ffffff" text-anchor="middle">激活 3,500 · 28%</text>
+            <rect x="110" y="114" width="120" height="26" rx="5" fill="#60a5fa"/>
+            <text x="170" y="131" font-size="11" fill="#0f172a" text-anchor="middle">付费 1,120 · 9%</text>
+            <rect x="128" y="150" width="84" height="26" rx="5" fill="#93c5fd"/>
+            <text x="170" y="167" font-size="11" fill="#0f172a" text-anchor="middle">复购 480 · 4%</text>
+          </svg>
+          <div style="margin-top:12px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px 12px;display:flex;gap:8px;align-items:flex-start">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1d4ed8" stroke-width="2" stroke-linecap="round" style="flex-shrink:0;margin-top:1px" aria-hidden="true"><path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.2 1 2V17h6v-.3c0-.8.4-1.5 1-2A7 7 0 0 0 12 2Z"/></svg>
+            <span style="font-size:12px;line-height:1.6;color:#1e40af"><b>最大流失：</b>注册→激活 −40%。建议激活邮件在注册后 1 小时内触达。</span>
+          </div>
+        </div>
+        <div style="padding:12px 18px;border-top:1px solid #e2e8f0;font-size:12px;color:#64748b">提问：「本月注册到付费转化如何？」→ FunnelChart</div>
+      </div>
+
+      <!-- 案例 3:同期群留存 -->
+      <div style="border:1px solid #e2e8f0;border-radius:14px;overflow:hidden;background:#ffffff">
+        <div style="padding:16px 18px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;gap:8px">
+          <div style="font-size:14px;font-weight:600">新用户同期群留存</div>
+          <span style="font-size:11px;font-weight:600;color:#1d4ed8;background:#eff6ff;border-radius:999px;padding:3px 10px">方法卡 · cohort</span>
+        </div>
+        <div style="background:#f8fafc;padding:16px">
+          <svg viewBox="0 0 340 190" width="100%" role="img" aria-label="四个批次的周留存热力矩阵,首周后显著衰减">
+            <text x="8" y="26" font-size="10" fill="#64748b">批次</text>
+            <text x="120" y="26" font-size="10" fill="#64748b" text-anchor="middle">W0</text>
+            <text x="176" y="26" font-size="10" fill="#64748b" text-anchor="middle">W1</text>
+            <text x="232" y="26" font-size="10" fill="#64748b" text-anchor="middle">W2</text>
+            <text x="288" y="26" font-size="10" fill="#64748b" text-anchor="middle">W3</text>
+            <text x="8" y="55" font-size="10" fill="#64748b">07 月</text>
+            <rect x="90" y="38" width="60" height="26" rx="4" fill="#2563eb"/><text x="120" y="55" font-size="10" fill="#ffffff" text-anchor="middle">100%</text>
+            <rect x="146" y="38" width="60" height="26" rx="4" fill="#2563eb" fill-opacity="0.42"/><text x="176" y="55" font-size="10" fill="#0f172a" text-anchor="middle">42%</text>
+            <rect x="202" y="38" width="60" height="26" rx="4" fill="#2563eb" fill-opacity="0.30"/><text x="232" y="55" font-size="10" fill="#0f172a" text-anchor="middle">31%</text>
+            <rect x="258" y="38" width="60" height="26" rx="4" fill="#2563eb" fill-opacity="0.24"/><text x="288" y="55" font-size="10" fill="#0f172a" text-anchor="middle">24%</text>
+            <text x="8" y="91" font-size="10" fill="#64748b">08 月</text>
+            <rect x="90" y="74" width="60" height="26" rx="4" fill="#2563eb"/><text x="120" y="91" font-size="10" fill="#ffffff" text-anchor="middle">100%</text>
+            <rect x="146" y="74" width="60" height="26" rx="4" fill="#2563eb" fill-opacity="0.46"/><text x="176" y="91" font-size="10" fill="#0f172a" text-anchor="middle">46%</text>
+            <rect x="202" y="74" width="60" height="26" rx="4" fill="#2563eb" fill-opacity="0.33"/><text x="232" y="91" font-size="10" fill="#0f172a" text-anchor="middle">33%</text>
+            <rect x="258" y="74" width="60" height="26" rx="4" fill="#2563eb" fill-opacity="0.27"/><text x="288" y="91" font-size="10" fill="#0f172a" text-anchor="middle">27%</text>
+            <text x="8" y="127" font-size="10" fill="#64748b">09 月</text>
+            <rect x="90" y="110" width="60" height="26" rx="4" fill="#2563eb"/><text x="120" y="127" font-size="10" fill="#ffffff" text-anchor="middle">100%</text>
+            <rect x="146" y="110" width="60" height="26" rx="4" fill="#2563eb" fill-opacity="0.51"/><text x="176" y="127" font-size="10" fill="#0f172a" text-anchor="middle">51%</text>
+            <rect x="202" y="110" width="60" height="26" rx="4" fill="#2563eb" fill-opacity="0.38"/><text x="232" y="127" font-size="10" fill="#0f172a" text-anchor="middle">38%</text>
+            <rect x="258" y="110" width="60" height="26" rx="4" fill="#2563eb" fill-opacity="0.30"/><text x="288" y="127" font-size="10" fill="#0f172a" text-anchor="middle">30%</text>
+            <text x="8" y="163" font-size="10" fill="#64748b">10 月</text>
+            <rect x="90" y="146" width="60" height="26" rx="4" fill="#2563eb"/><text x="120" y="163" font-size="10" fill="#ffffff" text-anchor="middle">100%</text>
+            <rect x="146" y="146" width="60" height="26" rx="4" fill="#2563eb" fill-opacity="0.55"/><text x="176" y="163" font-size="10" fill="#0f172a" text-anchor="middle">55%</text>
+            <rect x="202" y="146" width="60" height="26" rx="4" fill="#2563eb" fill-opacity="0.41"/><text x="232" y="163" font-size="10" fill="#0f172a" text-anchor="middle">41%</text>
+            <rect x="258" y="146" width="60" height="26" rx="4" fill="#93c5fd"/><text x="288" y="163" font-size="10" fill="#0f172a" text-anchor="middle">进行中</text>
+          </svg>
+          <div style="margin-top:12px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px 12px;display:flex;gap:8px;align-items:flex-start">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1d4ed8" stroke-width="2" stroke-linecap="round" style="flex-shrink:0;margin-top:1px" aria-hidden="true"><path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.2 1 2V17h6v-.3c0-.8.4-1.5 1-2A7 7 0 0 0 12 2Z"/></svg>
+            <span style="font-size:12px;line-height:1.6;color:#1e40af"><b>留存趋势：</b>首周后各批次衰减趋缓，10 月批次 W1 留存 55% 为四批最高。</span>
+          </div>
+        </div>
+        <div style="padding:12px 18px;border-top:1px solid #e2e8f0;font-size:12px;color:#64748b">提问：「各批次用户留存怎么样？」→ ContributionHeatmap + CohortRetentionLayout</div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ===== 架构 ===== -->
+<div id="architecture" style="width:100%;background:#0f172a;padding:88px 0">
+  <div style="max-width:1120px;margin:0 auto;padding:0 32px">
+    <h2 style="font-size:36px;font-weight:700;text-align:center;color:#ffffff">架构：从提问到看板</h2>
+    <p style="margin:12px auto 0;text-align:center;font-size:16px;color:#94a3b8;max-width:680px">五包 monorepo，契约先行，依赖方向单向；每包带独立架构文档</p>
+    <div style="display:flex;align-items:stretch;gap:0;margin-top:56px;color:#ffffff">
+      <div style="flex:1;display:flex;flex-direction:column;gap:16px;padding:24px;border:1px solid #1e293b;border-radius:14px;background:#111c2e">
+        <div style="font-size:13px;font-weight:600;color:#60a5fa;letter-spacing:0.08em">STEP 1</div>
+        <div style="font-size:16px;font-weight:600">自然语言提问</div>
+        <div style="font-size:13px;line-height:1.7;color:#94a3b8">中文问数，PlanReviewCard 确认思路与澄清口径</div>
+      </div>
+      <div class="chev" style="align-self:center;padding:0 12px;color:#475569">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg>
+      </div>
+      <div style="flex:1;display:flex;flex-direction:column;gap:16px;padding:24px;border:1px solid #1e293b;border-radius:14px;background:#111c2e">
+        <div style="font-size:13px;font-weight:600;color:#60a5fa;letter-spacing:0.08em">STEP 2</div>
+        <div style="font-size:16px;font-weight:600">编排层（llm 包）</div>
+        <div style="font-size:13px;line-height:1.7;color:#94a3b8">streamText 多步工具循环、上下文投影、双重终态、StreamHub 中继</div>
+      </div>
+      <div class="chev" style="align-self:center;padding:0 12px;color:#475569">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg>
+      </div>
+      <div style="flex:1;display:flex;flex-direction:column;gap:16px;padding:24px;border:1px solid #1e293b;border-radius:14px;background:#111c2e">
+        <div style="font-size:13px;font-weight:600;color:#60a5fa;letter-spacing:0.08em">STEP 3</div>
+        <div style="font-size:16px;font-weight:600">守卫管线（datasources 包）</div>
+        <div style="font-size:13px;line-height:1.7;color:#94a3b8">sqlGuard 词法守卫 → 结果集缓存 → EXPLAIN 成本门禁 → 方言级只读执行</div>
+      </div>
+      <div class="chev" style="align-self:center;padding:0 12px;color:#475569">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg>
+      </div>
+      <div style="flex:1;display:flex;flex-direction:column;gap:16px;padding:24px;border:1px solid #1e293b;border-radius:14px;background:#111c2e">
+        <div style="font-size:13px;font-weight:600;color:#60a5fa;letter-spacing:0.08em">STEP 4</div>
+        <div style="font-size:16px;font-weight:600">声明式看板（components + chart-spec）</div>
+        <div style="font-size:13px;line-height:1.7;color:#94a3b8">OpenUI Lang 流式渐进渲染，JSON Patch 增量编辑，活看板确定性刷新</div>
+      </div>
+    </div>
+    <p style="margin:40px auto 0;text-align:center;font-size:14px;color:#64748b">
+      每一包的架构 / 业务逻辑 / 扩展指南见 <a href="https://github.com/HelloTomBruce/openui-analytics/tree/main/packages" target="_blank" rel="noopener" style="color:#60a5fa">packages/*/README.md</a>
+    </p>
+  </div>
+</div>
+
+<!-- ===== 运行时防线 ===== -->
+<div id="guards" style="width:100%;padding:88px 0;background:#f8fafc;border-top:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0">
+  <div style="max-width:1120px;margin:0 auto;padding:0 32px">
+    <h2 style="font-size:36px;font-weight:700;text-align:center">运行时防线</h2>
+    <p style="margin:12px auto 0;text-align:center;font-size:16px;color:#475569;max-width:680px">LLM 不可信是前提：预算、并发、截断、熔断、不变量，全部服务端强制</p>
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:16px;margin-top:48px">
+      <div style="border:1px solid #e2e8f0;border-radius:12px;padding:22px;background:#ffffff">
+        <div style="font-size:14px;font-weight:600">任务看门狗</div>
+        <div style="font-size:12.5px;line-height:1.7;color:#475569;margin-top:8px">wall-clock 超限自动中止，provider 挂起不占用</div>
+      </div>
+      <div style="border:1px solid #e2e8f0;border-radius:12px;padding:22px;background:#ffffff">
+        <div style="font-size:14px;font-weight:600">token 预算熔断</div>
+        <div style="font-size:12.5px;line-height:1.7;color:#475569;margin-top:8px">单任务累计超限即终态中止，成本敞口有界</div>
+      </div>
+      <div style="border:1px solid #e2e8f0;border-radius:12px;padding:22px;background:#ffffff">
+        <div style="font-size:14px;font-weight:600">并发准入</div>
+        <div style="font-size:12.5px;line-height:1.7;color:#475569;margin-top:8px">running 任务数超上限直接 429，重连不占名额</div>
+      </div>
+      <div style="border:1px solid #e2e8f0;border-radius:12px;padding:22px;background:#ffffff">
+        <div style="font-size:14px;font-weight:600">工具结果截断</div>
+        <div style="font-size:12.5px;line-height:1.7;color:#475569;margin-top:8px">超长结果信封化 + 「数据非指令」注入防御</div>
+      </div>
+      <div style="border:1px solid #e2e8f0;border-radius:12px;padding:22px;background:#ffffff">
+        <div style="font-size:14px;font-weight:600">重复循环熔断</div>
+        <div style="font-size:12.5px;line-height:1.7;color:#475569;margin-top:8px">生成退化自动截断并停止计费，合法内容保留</div>
+      </div>
+    </div>
+    <p style="margin:32px auto 0;text-align:center;font-size:14px;color:#64748b">
+      结构化遥测事件流（NDJSON，可注入 OTel）· finish_task 服务端不变量 · 双层 eval 体系
+    </p>
+  </div>
+</div>
+
+<!-- ===== 快速开始 ===== -->
+<div id="quickstart" style="width:100%;padding:88px 0">
+  <div style="max-width:1120px;margin:0 auto;padding:0 32px;display:grid;grid-template-columns:1fr 1fr;gap:64px;align-items:center">
+    <div>
+      <h2 style="font-size:36px;font-weight:700">60 秒本地跑起来</h2>
+      <p style="margin:16px 0 0;font-size:16px;line-height:1.8;color:#475569">
+        克隆仓库，装依赖，起服务——打开 <code style="background:#f1f5f9;padding:2px 6px;border-radius:6px;font-size:14px">localhost:3006</code>，
+        在「设置」里填入 OpenAI 兼容 API Key（或环境变量预置），即可开始提问。
+      </p>
+      <p style="margin:16px 0 0;font-size:15px;line-height:1.8;color:#475569">
+        想定制分析套路？把方法卡放进 <code style="background:#f1f5f9;padding:2px 6px;border-radius:6px;font-size:14px">data/methodology/*.json</code>，
+        推荐列表与提示词注入同步生效，坏卡跳过不阻塞。
+      </p>
+      <a href="https://github.com/HelloTomBruce/openui-analytics#readme" target="_blank" rel="noopener"
+         style="display:inline-flex;align-items:center;height:44px;padding:0 22px;margin-top:24px;border:1px solid #cbd5e1;background:#ffffff;color:#0f172a;border-radius:10px;font-size:14px;font-weight:600">
+        阅读完整文档 →
+      </a>
+    </div>
+    <div style="background:#0f172a;border-radius:16px;padding:28px;color:#e2e8f0">
+      <div style="display:flex;gap:8px;margin-bottom:20px" aria-hidden="true">
+        <span style="width:10px;height:10px;border-radius:50%;background:#475569"></span>
+        <span style="width:10px;height:10px;border-radius:50%;background:#475569"></span>
+        <span style="width:10px;height:10px;border-radius:50%;background:#475569"></span>
+      </div>
+      <pre style="margin:0;font-size:13.5px;line-height:1.9;overflow-x:auto"><code><span style="color:#64748b"># 1. 克隆并安装</span>
+git clone https://github.com/HelloTomBruce/openui-analytics.git
+cd openui-analytics && pnpm install
+
+<span style="color:#64748b"># 2. 配置模型（或启动后在设置页填写）</span>
+export OPENAI_API_KEY=sk-xxx
+export OPENAI_BASE_URL=https://api.openai.com/v1
+
+<span style="color:#64748b"># 3. 启动</span>
+pnpm dev
+<span style="color:#64748b"># → http://localhost:3006</span></code></pre>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 评测 + Footer ===== -->
+<div style="width:100%;background:#f8fafc;border-top:1px solid #e2e8f0;padding:56px 0">
+  <div style="max-width:1120px;margin:0 auto;padding:0 32px;display:flex;align-items:center;justify-content:center;gap:48px;flex-wrap:wrap;text-align:center">
+    <div style="display:flex;align-items:center;gap:12px">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 11.1V12a10 10 0 1 1-5.9-9.1"/><path d="M22 4 12 14.01l-3-3"/></svg>
+      <span style="font-size:14px;color:#475569"><b style="color:#0f172a">Tier A 轨迹回归</b> · 进 CI,机制语义锁定</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:12px">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2a10 10 0 1 0 10 10"/><path d="M12 12 22 4"/><path d="M16 4h6v6"/></svg>
+      <span style="font-size:14px;color:#475569"><b style="color:#0f172a">Tier B 真实模型基线</b> · 手动/夜间,行为漂移可度量</span>
+    </div>
+  </div>
+</div>
+
+<div style="width:100%;background:#ffffff;border-top:1px solid #e2e8f0;padding:40px 0">
+  <div style="max-width:1120px;margin:0 auto;padding:0 32px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px">
+    <div style="display:flex;align-items:center;gap:10px">
+      <svg width="22" height="22" viewBox="0 0 28 28" fill="none" aria-hidden="true">
+        <rect x="2" y="14" width="5" height="12" rx="1.5" fill="#2563eb"/>
+        <rect x="11.5" y="8" width="5" height="18" rx="1.5" fill="#3b82f6"/>
+        <rect x="21" y="3" width="5" height="23" rx="1.5" fill="#93c5fd"/>
+      </svg>
+      <span style="font-size:14px;font-weight:600">OpenUI Analytics</span>
+    </div>
+    <div style="display:flex;gap:28px;font-size:13px">
+      <a href="https://github.com/HelloTomBruce/openui-analytics" target="_blank" rel="noopener">仓库</a>
+      <a href="https://github.com/HelloTomBruce/openui-analytics/tree/main/packages" target="_blank" rel="noopener">包文档</a>
+      <a href="https://github.com/HelloTomBruce/openui-analytics/issues" target="_blank" rel="noopener">Issues</a>
+    </div>
+    <div style="font-size:13px;color:#94a3b8">对话式生成 UI 数据分析看板</div>
+  </div>
+</div>
+
+</div>
+
+</body>
+</html>
